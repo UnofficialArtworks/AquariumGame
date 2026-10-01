@@ -30,9 +30,12 @@ body {
 }
 
 .game-root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
   position: relative;
   width: 100%;
-  height: 100vh;
+  /* vh includes retracted browser chrome on tablets; dvh tracks visible space. */
+  height: 100%;
+  height: 100dvh;
 }
 
 .tank-canvas {
@@ -387,14 +390,14 @@ button:focus-visible, input:focus-visible { outline: 3px solid #ffe18a; outline-
 .care-meter-label { display: flex; justify-content: space-between; gap: 5px; font-size: .65rem; color: #c3e1e8; white-space: nowrap; margin-bottom: 5px; }
 .care-meter-label strong { color: white; }
 .care-strip .meter-track { height: 4px; }
-.save-indicator { top: auto; bottom: 9px; left: 14px; z-index: 2; background: rgba(6,28,44,.55); border: 0; font-size: .66rem; }
-.mode-toolbar { position: absolute; z-index: 5; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; padding: 7px; border-radius: 21px; pointer-events: auto; }
+.save-indicator { top: auto; bottom: calc(9px + var(--safe-bottom)); left: 14px; z-index: 2; background: rgba(6,28,44,.55); border: 0; font-size: .66rem; }
+.mode-toolbar { position: absolute; z-index: 5; bottom: calc(22px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); display: flex; gap: 5px; padding: 7px; border-radius: 21px; pointer-events: auto; }
 .mode-button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 87px; min-height: 60px; border: 1px solid transparent; border-radius: 15px; background: transparent; color: #bbd9df; cursor: pointer; }
 .mode-button span { font-size: 1.35rem; }
 .mode-button strong { font-size: .7rem; }
 .mode-button:hover { background: rgba(255,255,255,.09); color: white; }
 .mode-button.active { background: linear-gradient(145deg,#69efdc,#2cb9bb); color: #043744; box-shadow: 0 4px 18px #40d9d05c; }
-.activity-panel { position: absolute; z-index: 4; bottom: 101px; left: 50%; transform: translateX(-50%); width: min(730px, calc(100% - 24px)); border-radius: 18px; padding: 13px 16px; pointer-events: auto; }
+.activity-panel { position: absolute; z-index: 4; bottom: calc(101px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); width: min(730px, calc(100% - 24px)); border-radius: 18px; padding: 13px 16px; pointer-events: auto; }
 .activity-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .activity-heading strong { font-size: .98rem; }
 .activity-heading span, .activity-foot { font-size: .75rem; color: var(--text-muted); }
@@ -436,7 +439,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #ffe18a; outline-
 .inline-confirm .btn { font-size: .7rem; padding: 6px; }
 .rarity { display: inline-block; font-size: .61rem; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; color: #c9d4d8; }
 .rarity-uncommon { color: #7fe7ad; } .rarity-rare { color: #73c8ff; } .rarity-epic { color: #d9a4ff; } .rarity-legendary { color: #ffd475; }
-.inventory-panel { z-index: 4; bottom: 100px; pointer-events: none; padding: 8px 12px; max-width: min(900px, 100%); }
+.inventory-panel { z-index: 4; bottom: calc(100px + var(--safe-bottom)); pointer-events: none; padding: 8px 12px; max-width: min(900px, 100%); }
 .inventory-panel > * { pointer-events: auto; }
 .inventory-palette-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: min(850px,100%); padding: 7px 11px; color: #e5f7f5; background: #092d42eb; border: 1px solid var(--panel-border); border-radius: 12px; font-size: .75rem; pointer-events: auto; }
 .inventory-collapse { flex: 0 0 auto; padding: 5px 9px; color: #91eee0; background: #ffffff0d; border: 1px solid #75d9d277; border-radius: 8px; cursor: pointer; font: inherit; font-weight: 800; }
@@ -493,9 +496,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid #ffe18a; outline-
   .currency-display, .level-display { height: 30px; }
   .care-strip { top: 104px; gap: 9px; padding: 7px 10px; } .care-title { display: none; } .care-meter-label { font-size: .58rem; }
   .fish-info { top: 150px; right: 10px; }
-  .mode-toolbar { bottom: 10px; width: min(480px,calc(100% - 12px)); justify-content: space-around; }
+  .mode-toolbar { bottom: calc(10px + var(--safe-bottom)); width: min(480px,calc(100% - 12px)); justify-content: space-around; }
   .mode-button { min-width: 0; flex: 1; min-height: 52px; }
-  .activity-panel, .inventory-panel { bottom: 82px; }
+  .activity-panel, .inventory-panel { bottom: calc(82px + var(--safe-bottom)); }
   .inventory-panel { padding: 4px 7px; }
   .inventory-palette-heading { width: min(100%, 520px); padding: 6px 8px; }
   .inventory-palette { max-height: 22dvh; gap: 4px; padding: 6px; }
@@ -593,7 +596,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #ffe18a; outline-
 @media (max-width: 480px) {
   .brand-name > strong { max-width: 130px; }
   .brand-name input { width: 145px; }
-  .nursery-panel { top: auto; bottom: 82px; left: 10px; width: calc(100% - 20px); max-height: min(49dvh, 430px); }
+  .nursery-panel { top: auto; bottom: calc(82px + var(--safe-bottom)); left: 10px; width: calc(100% - 20px); max-height: min(49dvh, 430px); }
   .main-roster-panel { left: 10px; width: calc(100% - 20px); max-height: min(42dvh, 350px); }
   .clean-actions .tool-option { flex: 1 1 45%; min-width: 0; }
   .clean-actions > .btn { flex: 1 1 45%; margin: 0; }
@@ -620,7 +623,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #ffe18a; outline-
 .egg-details .meter-track { height: 4px; margin: 5px 0 3px; }
 .egg-details small { display: block; color: #aed2d9; font-size: .63rem; }
 @media (max-width: 480px) {
-  .nursery-collapsed { width: min(275px, calc(100% - 20px)); left: 10px; bottom: 82px; }
+  .nursery-collapsed { width: min(275px, calc(100% - 20px)); left: 10px; bottom: calc(82px + var(--safe-bottom)); }
   .nursery-feeding { top: 146px; bottom: auto; max-height: min(35dvh, 300px); }
   .nursery-feeding.nursery-collapsed { max-height: none; }
   .nursery-collapsed .nursery-heading h2 { font-size: .95rem; }

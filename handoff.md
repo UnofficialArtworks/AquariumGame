@@ -2,6 +2,14 @@
 
 Updated October 1, 2026 by Codex, continuing Claude's cleaning tools, gadgets, stands and flicker work.
 
+## Latest pass: iPad Safari menu and Home Screen support
+
+- User reported the bottom menu was completely clipped on iPad Safari. `.game-root` previously used `100vh`, which measures the large viewport including space behind mobile browser controls. It now uses `100dvh` with a `100%` fallback through the existing full-height root chain. The canvas and HUD resize together with visible browser space and orientation changes.
+- Bottom toolbar, feed/clean panels, decoration palette, compact nursery and save indicator share `--safe-bottom: env(safe-area-inset-bottom, 0px)` so any supplied home-indicator inset preserves their spacing. Safari's automatic safe viewport and default standalone status bar are retained; no edge-to-edge `viewport-fit=cover` is requested.
+- Added `public/manifest.webmanifest` with relative `id`, `start_url`, `scope` and icons, `display: standalone`, aquarium name/theme, and 192/512 PNGs. `index.html` links a 180px Apple touch icon and adds legacy Apple standalone/title/status-bar metadata. An original vector goldfish icon replaces the generic build-tool favicon; PNG variants match `public/app-icon.svg`.
+- On iPad: reload the public site, choose Share → Add to Home Screen, keep **Open as Web App** enabled if shown, then launch the new icon. Home Screen mode needs an internet connection to launch; no offline cache/service worker or cloud save sync was added. Safari and installed web-app storage can be separate, so do not promise automatic save transfer or recommend deleting an installed app with progress.
+- Verification: build/typecheck, lint and 33 gameplay tests pass. In a Chromium browser, all five bottom buttons were fully visible and unobstructed at 768×1024, 768×900, 1024×768, 1024×620, 820×1060, 1180×700, 320×568, 390×700 and 1440×900. Actual clicks switched Watch/Feed/Clean/Decorate and opened Shop at 1024×620; no runtime errors. These are viewport checks, not physical iPad Safari emulation of browser chrome or installed-app mode. Manifest paths resolve within `/AquariumGame/`; all three PNG dimensions and built relative links were checked.
+
 ## GitHub Pages setup
 
 - Added `.github/workflows/pages.yml`: Node.js 24, `npm ci`, lint/typecheck/tests/audit/build, Pages artifact upload and deployment. Uses official actions pinned to the revisions in Vite's current deployment guide. Checks run on PRs; publishing runs only on the repository's default branch (also supports `master` and custom names) or a manual run on that branch. Deployment uses the `github-pages` environment with minimal job permissions and serialized publishing.

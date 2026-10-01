@@ -48,6 +48,8 @@ For manual nursery QA, open `/tests/nursery.html` on a separate development-serv
 
 Play the deployed game at [My Aquarium](https://unofficialartworks.github.io/AquariumGame/). The source lives in [UnofficialArtworks/AquariumGame](https://github.com/UnofficialArtworks/AquariumGame), and pushes to `main` automatically update the site after checks pass.
 
+On iPad, reload the site in Safari, choose **Share → Add to Home Screen**, and leave **Open as Web App** enabled if Safari shows that option. Launch the aquarium icon to play in its own window without Safari's address bar. The layout follows the visible browser height in portrait and landscape. Internet access is needed to launch; Home Screen and Safari saves may be separate, and there is no cloud sync.
+
 GitHub Pages deployment is configured in `.github/workflows/pages.yml`. To publish a separate copy:
 
 1. Create your public GitHub repository and push this project, including `.github/workflows/pages.yml` and `package-lock.json`.
