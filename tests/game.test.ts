@@ -1,0 +1,539 @@
+import assert from 'node:assert/strict'
+import { beforeEach, test } from 'node:test'
+import './cleaning.test'
+import { createInitialState, migrate } from '../src/state/migrations'
+import { FISH_CATALOG, getFishDef } from '../src/scene/fish/fishDefinitions'
+import { DECORATION_CATALOG } from '../src/scene/decorations/decorationDefinitions'
+import { BACKGROUND_CATALOG } from '../src/scene/backgrounds'
+import { SUBSTRATE_CATALOG } from '../src/scene/substrates'
+import { FOOD_CATALOG } from '../src/scene/food/foodDefinitions'
+import { levelFromXp } from '../src/state/progression'
+import { FRIENDSHIP_SECONDS, NURSERY_CAPACITY, PASSIVE_COINS_PER_SECOND, sizeForGrowth } from '../src/state/economy'
+import { createNurseryEgg, getEggCountRange, getEggHatchRange, inheritedDefinition } from '../src/state/nursery'
+
+const storage = new Map<string, string>()
+Object.defineProperty(globalThis, 'localStorage', { value: {
+  getItem: (key: string) => storage.get(key) ?? null,
+  setItem: (key: string, value: string) => storage.set(key, value),
+  removeItem: (key: string) => storage.delete(key),
+}, configurable: true })
+Object.defineProperty(globalThis, 'window', { value: { localStorage }, configurable: true })
+
+const { useGameStore: store } = await import('../src/state/useGameStore')
+const { useUIStore: ui } = await import('../src/state/useUIStore')
+const { dropFood, foodItems, updateFood, vacuumFoodNear } = await import('../src/sim/food')
+const { loadAlgae, algaeCoverage, scrubAlgae, growAlgae, saveAlgae } = await import('../src/sim/algae')
+
+beforeEach(() => {
+  store.setState(createInitialState())
+  ui.setState({ activeTank: 'main', levelUp: null, welcomeBack: null })
+  foodItems.length = 0
+})
+
+test('v1 migration preserves coins, renamed catfish, layout, and owned background', () => {
+  const background = BACKGROUND_CATALOG.find((b) => b.cost > 0)!
+  const decoration = createInitialState().placedDecorations[0]
+  const result = migrate({ currency: 417, ownedFish: [{ id: 'old', defId: 'catfish' }],
+    placedDecorations: [decoration], backgroundId: background.id }, 1)
+  assert.equal(result.currency, 417)
+  assert.equal(result.ownedFish[0].defId, 'cory-catfish')
+  assert.ok(result.ownedFish[0].name)
+  assert.ok(result.fishVitals.old)
+  assert.deepEqual(result.placedDecorations, [decoration])
+  assert.ok(result.unlockedBackgroundIds.includes(background.id))
+  assert.equal(result.backgroundId, background.id)
+  assert.ok(result.treats.bloodworms > 0)
+  assert.equal(result.aquariumName, 'My Aquarium')
+  assert.equal(result.ownedFish[0].habitat, 'main')
+})
+
+test('v2 migration gives existing fish a main tank home and keeps their progress', () => {
+  const original = createInitialState()
+  const fishId = original.ownedFish[0].id
+  const result = migrate({ ...original, aquariumName: undefined, nurserySession: undefined,
+    ownedFish: original.ownedFish.map(({ habitat: _habitat, ...fish }) => fish),
+    fishVitals: { ...original.fishVitals, [fishId]: { hunger: 0.3, growth: 0.9, mealsEaten: 8 } },
+  }, 2)
+  assert.equal(result.ownedFish[0].habitat, 'main')
+  assert.equal(result.fishVitals[fishId].growth, 0.9)
+  assert.equal(result.aquariumName, 'My Aquarium')
+  assert.equal(result.nurserySession, null)
+})
+
+test('v3 migration keeps a pending friendship and adds an empty egg list', () => {
+  const old = createInitialState()
+  const [first, second] = old.ownedFish
+  old.ownedFish = old.ownedFish.map((fish) => [first.id, second.id].includes(fish.id) ? { ...fish, habitat: 'nursery' } : fish)
+  old.fishVitals[first.id].growth = 1
+  old.fishVitals[second.id].growth = 1
+  old.nurserySession = { parentIds: [first.id, second.id], remainingSeconds: 42 }
+  const result = migrate({ ...old, nurseryEggs: undefined }, 3)
+  assert.deepEqual(result.nurserySession, { ...old.nurserySession, eggCount: 1 })
+  assert.deepEqual(result.nurseryEggs, [])
+})
+
+test('aquarium name and nursery homes persist', () => {
+  const id = store.getState().ownedFish[0].id
+  store.getState().renameAquarium('  Bubble House  ')
+  assert.equal(store.getState().transferFish(id, 'nursery'), true)
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  assert.equal(saved.aquariumName, 'Bubble House')
+  assert.equal(saved.ownedFish[0].habitat, 'nursery')
+  store.getState().renameAquarium('   ')
+  assert.equal(store.getState().aquariumName, 'Bubble House')
+})
+
+test('starter and purchased fish keep an individual size within their species range', () => {
+  for (const def of FISH_CATALOG) {
+    assert.ok(def.sizeRange[0] > 0 && def.sizeRange[0] <= 1 && def.sizeRange[1] >= 1)
+    assert.ok(def.eggCountRange[0] >= 1 && def.eggCountRange[1] <= 6)
+  }
+  assert.ok(FISH_CATALOG.some((def) => def.eggCountRange[0] === 1))
+  assert.ok(FISH_CATALOG.some((def) => def.eggCountRange[1] === 6))
+  const initial = createInitialState()
+  for (const fish of initial.ownedFish) {
+    const range = FISH_CATALOG.find((def) => def.id === fish.defId)!.sizeRange
+    assert.ok(fish.sizeScale >= range[0] && fish.sizeScale <= range[1])
+  }
+  const id = store.getState().buyFish('goldfish')!
+  const bought = store.getState().ownedFish.find((fish) => fish.id === id)!
+  const [min, max] = FISH_CATALOG.find((def) => def.id === 'goldfish')!.sizeRange
+  assert.ok(bought.sizeScale >= min && bought.sizeScale <= max)
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  assert.equal(migrate(saved, 4).ownedFish.find((fish) => fish.id === id)?.sizeScale, bought.sizeScale)
+  assert.ok(sizeForGrowth(0.1, bought.sizeScale) < sizeForGrowth(1, bought.sizeScale))
+})
+
+test('friendship samples a species clutch once and reserves its full capacity through reload', () => {
+  const [first, second, third] = store.getState().ownedFish
+  const [min, max] = getEggCountRange(first.defId)
+  assert.ok(min >= 1 && max <= 6 && min <= max)
+  assert.notDeepEqual(getEggCountRange(first.defId), getEggCountRange(second.defId))
+  store.setState((s) => ({
+    ownedFish: s.ownedFish.map((fish) => [first.id, second.id].includes(fish.id) ? { ...fish, habitat: 'nursery' as const } : fish),
+    fishVitals: { ...s.fishVitals,
+      [first.id]: { ...s.fishVitals[first.id], growth: 1 },
+      [second.id]: { ...s.fishVitals[second.id], growth: 1 },
+    },
+  }))
+  assert.equal(store.getState().startFriendship(first.id, second.id), true)
+  const count = store.getState().nurserySession!.eggCount
+  assert.ok(count >= min && count <= max)
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  assert.equal(migrate(saved, 4).nurserySession?.eggCount, count)
+  assert.equal(store.getState().transferFish(third.id, 'nursery'),
+    store.getState().ownedFish.filter((fish) => fish.habitat === 'nursery').length + count < NURSERY_CAPACITY)
+  store.setState((s) => ({ nurserySession: { ...s.nurserySession!, remainingSeconds: 1 } }))
+  store.getState().tick()
+  assert.equal(store.getState().nurseryEggs.length, count)
+  assert.equal(store.getState().ownedFish.length, 3)
+})
+
+test('any two fully grown fish can become nursery friends and make a clutch that hatches later', () => {
+  const [first, second] = store.getState().ownedFish
+  assert.notEqual(first.defId, second.defId)
+  assert.equal(store.getState().transferFish(first.id, 'nursery'), true)
+  assert.equal(store.getState().transferFish(second.id, 'nursery'), true)
+  assert.equal(store.getState().startFriendship(first.id, second.id), false)
+  store.setState((s) => ({ fishVitals: {
+    ...s.fishVitals,
+    [first.id]: { ...s.fishVitals[first.id], growth: 1 },
+    [second.id]: { ...s.fishVitals[second.id], growth: 1 },
+  } }))
+  assert.equal(store.getState().startFriendship(first.id, first.id), false)
+  assert.equal(store.getState().startFriendship(first.id, second.id), true)
+  assert.equal(store.getState().nurserySession?.remainingSeconds, FRIENDSHIP_SECONDS)
+  const clutchCount = store.getState().nurserySession!.eggCount
+  store.setState((s) => ({ nurserySession: { ...s.nurserySession!, remainingSeconds: 1 } }))
+  store.getState().tick()
+  const result = store.getState()
+  assert.equal(result.nurserySession, null)
+  assert.equal(result.ownedFish.length, 3)
+  assert.equal(result.nurseryEggs.length, clutchCount)
+  for (const egg of result.nurseryEggs) {
+    assert.ok([first.defId, second.defId].includes(egg.defId))
+    assert.ok(egg.hatchSeconds >= getEggHatchRange(egg.defId)[0])
+    assert.ok(egg.hatchSeconds <= getEggHatchRange(egg.defId)[1])
+    assert.equal(egg.remainingSeconds, egg.hatchSeconds)
+    assert.equal(egg.inheritance?.bodyParentId, egg.defId === first.defId ? first.id : second.id)
+    assert.equal(egg.inheritance?.colorParentId, egg.defId === first.defId ? second.id : first.id)
+  }
+  store.getState().tick()
+  assert.equal(store.getState().ownedFish.length, 3)
+  assert.equal(store.getState().nurseryEggs.length, clutchCount)
+  store.setState((s) => ({ nurseryEggs: s.nurseryEggs.map((item) => ({ ...item, remainingSeconds: 1 })) }))
+  store.getState().tick()
+  assert.equal(store.getState().nurseryEggs.length, 0)
+  assert.equal(store.getState().ownedFish.length, 3 + clutchCount)
+  const baby = store.getState().ownedFish.at(-1)!
+  assert.equal(baby.habitat, 'nursery')
+  assert.ok([first.defId, second.defId].includes(baby.defId))
+  assert.deepEqual(baby.inheritance, result.nurseryEggs.at(-1)?.inheritance)
+  assert.ok(baby.sizeScale >= getFishDef(baby.defId)!.sizeRange[0])
+  assert.ok(baby.sizeScale <= getFishDef(baby.defId)!.sizeRange[1])
+  const savedBaby = JSON.parse(storage.get('aquarium-save')!).state.ownedFish.at(-1)
+  assert.equal(savedBaby.sizeScale, baby.sizeScale)
+  assert.equal(migrate(JSON.parse(storage.get('aquarium-save')!).state, 5).ownedFish.at(-1)?.sizeScale, baby.sizeScale)
+  assert.ok(store.getState().fishVitals[baby.id].growth < 1)
+  assert.ok(store.getState().ownedFish.some((f) => f.id === first.id))
+  assert.ok(store.getState().ownedFish.some((f) => f.id === second.id))
+  assert.equal(store.getState().transferFish(baby.id, 'main'), true)
+  assert.equal(store.getState().ownedFish.at(-1)?.habitat, 'main')
+  store.getState().tick()
+  assert.equal(store.getState().ownedFish.length, 3 + clutchCount)
+})
+
+test('nine regular meals make a starter fish fully grown and eligible', () => {
+  const [first, second] = store.getState().ownedFish
+  for (let i = 0; i < 9; i++) {
+    store.getState().fishAte(first.id, 'pellets')
+    store.getState().fishAte(second.id, 'pellets')
+  }
+  assert.equal(store.getState().fishVitals[first.id].growth, 1)
+  assert.equal(store.getState().fishVitals[second.id].growth, 1)
+  assert.equal(store.getState().transferFish(first.id, 'nursery'), true)
+  assert.equal(store.getState().transferFish(second.id, 'nursery'), true)
+  assert.equal(store.getState().startFriendship(first.id, second.id), true)
+})
+
+test('nursery reserves room for a full clutch, and moving a parent ends the friendship', () => {
+  const [first, second] = store.getState().ownedFish
+  const maxClutch = getEggCountRange(first.defId)[1]
+  const extra = Array.from({ length: NURSERY_CAPACITY - 2 }, (_, i) => ({
+    ...first, id: `extra-${i}`, name: `Extra ${i}`, habitat: 'nursery' as const,
+  }))
+  store.setState((s) => ({
+    ownedFish: [...s.ownedFish.map((f) => f.id === first.id || f.id === second.id ? { ...f, habitat: 'nursery' as const } : f), ...extra],
+    fishVitals: { ...s.fishVitals, [first.id]: { ...s.fishVitals[first.id], growth: 1 }, [second.id]: { ...s.fishVitals[second.id], growth: 1 } },
+  }))
+  assert.equal(store.getState().startFriendship(first.id, second.id), false)
+  store.setState((s) => ({ ownedFish: s.ownedFish.filter((f) => !extra.slice(0, maxClutch).some((e) => e.id === f.id)) }))
+  assert.equal(store.getState().startFriendship(first.id, second.id), true)
+  store.setState((s) => ({ nurserySession: { ...s.nurserySession!, eggCount: maxClutch } }))
+  assert.equal(store.getState().transferFish(store.getState().ownedFish.find((f) => f.habitat === 'main')!.id, 'nursery'), false)
+  assert.equal(store.getState().transferFish(first.id, 'main'), true)
+  assert.equal(store.getState().nurserySession, null)
+  assert.equal(store.getState().transferFish(first.id, 'nursery'), true)
+  assert.equal(store.getState().startFriendship(first.id, second.id), true)
+  assert.ok(store.getState().sellFish(second.id) > 0)
+  assert.equal(store.getState().nurserySession, null)
+})
+
+test('eggs occupy nursery spots, including the reserved clutch', () => {
+  const [first, second, third] = store.getState().ownedFish
+  const maxClutch = getEggCountRange(first.defId)[1]
+  const eggs = Array.from({ length: NURSERY_CAPACITY - 2 - maxClutch }, (_, i) => ({
+    ...createNurseryEgg(first, second), id: `egg-${i}`,
+  }))
+  store.setState((s) => ({
+    ownedFish: s.ownedFish.map((f) => [first.id, second.id].includes(f.id) ? { ...f, habitat: 'nursery' as const } : f),
+    fishVitals: { ...s.fishVitals,
+      [first.id]: { ...s.fishVitals[first.id], growth: 1 },
+      [second.id]: { ...s.fishVitals[second.id], growth: 1 },
+    },
+    nurseryEggs: eggs,
+  }))
+  assert.equal(store.getState().startFriendship(first.id, second.id), true)
+  store.setState((s) => ({ nurserySession: { ...s.nurserySession!, eggCount: maxClutch } }))
+  assert.equal(store.getState().transferFish(third.id, 'nursery'), false)
+  store.setState((s) => ({ nurserySession: { ...s.nurserySession!, remainingSeconds: 1 } }))
+  store.getState().tick()
+  assert.equal(store.getState().nurseryEggs.length, NURSERY_CAPACITY - 2)
+  assert.equal(store.getState().startFriendship(first.id, second.id), false)
+  assert.equal(store.getState().transferFish(third.id, 'nursery'), false)
+})
+
+test('each egg saves its species-specific hatch time without rerolling on reload', () => {
+  const [first, second] = store.getState().ownedFish
+  const egg = createNurseryEgg(first, second)
+  const [min, max] = getEggHatchRange(egg.defId)
+  assert.ok(egg.hatchSeconds >= min && egg.hatchSeconds <= max)
+  assert.equal(egg.remainingSeconds, egg.hatchSeconds)
+  assert.notDeepEqual(getEggHatchRange('goldfish'), getEggHatchRange('neon-tetra'))
+  store.setState({ nurseryEggs: [egg] })
+  store.getState().tick()
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  assert.equal(saved.nurseryEggs[0].hatchSeconds, egg.hatchSeconds)
+  assert.equal(saved.nurseryEggs[0].remainingSeconds, egg.hatchSeconds - 1)
+  assert.deepEqual(migrate(saved, 4).nurseryEggs, saved.nurseryEggs)
+})
+
+test('offspring inherit one parent body and the other parent actual palette across generations', () => {
+  const [first, second, third] = createInitialState().ownedFish
+  const firstEgg = createNurseryEgg(first, second)
+  const colorParent = firstEgg.inheritance!.colorParentId === first.id ? first : second
+  const inheritedColors = inheritedDefinition(colorParent)!
+  assert.equal(firstEgg.inheritance?.color, inheritedColors.color)
+  assert.equal(firstEgg.inheritance?.color2, inheritedColors.color2)
+  assert.equal(firstEgg.inheritance?.color3, inheritedColors.color3)
+  const grownChild = { ...first, id: 'second-generation-parent', name: 'Junior', defId: firstEgg.defId,
+    inheritance: firstEgg.inheritance }
+  const secondEgg = createNurseryEgg(grownChild, third)
+  const nextColorParent = secondEgg.inheritance!.colorParentId === grownChild.id ? grownChild : third
+  const nextBodyParent = secondEgg.inheritance!.bodyParentId === grownChild.id ? grownChild : third
+  const inheritedAgain = inheritedDefinition(nextColorParent)!
+  assert.equal(secondEgg.defId, nextBodyParent.defId)
+  assert.equal(secondEgg.inheritance?.color, inheritedAgain.color)
+  assert.equal(secondEgg.inheritance?.color2, inheritedAgain.color2)
+  assert.equal(secondEgg.inheritance?.color3, inheritedAgain.color3)
+  const state = createInitialState()
+  const restored = migrate({ ...state, ownedFish: [...state.ownedFish, grownChild], nurseryEggs: [secondEgg] }, 4)
+  assert.deepEqual(restored.ownedFish.at(-1)?.inheritance, grownChild.inheritance)
+  assert.deepEqual(restored.nurseryEggs[0].inheritance, secondEgg.inheritance)
+})
+
+test('a hatchling starts small and grows steadily to adult size', () => {
+  assert.equal(sizeForGrowth(0.1), 0.5)
+  assert.ok(sizeForGrowth(0.1) < sizeForGrowth(0.5))
+  assert.ok(sizeForGrowth(0.5) < sizeForGrowth(1))
+  assert.equal(sizeForGrowth(1), 1.22)
+})
+
+test('offline catch-up applies only time left after friendship to the new egg', () => {
+  const [first, second] = store.getState().ownedFish
+  store.setState((s) => ({
+    ownedFish: s.ownedFish.map((f) => ({ ...f, habitat: 'nursery' as const })),
+    fishVitals: Object.fromEntries(Object.entries(s.fishVitals).map(([id, v]) => [id, { ...v, growth: 1 }])),
+  }))
+  assert.equal(store.getState().startFriendship(first.id, second.id), true)
+  const clutchCount = store.getState().nurserySession!.eggCount
+  store.setState({ lastTickTimestamp: Date.now() - (FRIENDSHIP_SECONDS + 30) * 1000 })
+  store.getState().applyOfflineProgress()
+  const egg = store.getState().nurseryEggs[0]
+  assert.ok(egg)
+  assert.equal(store.getState().ownedFish.length, 3)
+  assert.ok(Math.abs(egg.remainingSeconds - (egg.hatchSeconds - 30)) < 0.1)
+  store.getState().applyOfflineProgress()
+  assert.equal(store.getState().nurseryEggs.length, clutchCount)
+  assert.equal(store.getState().nurseryEggs[0].id, egg.id)
+})
+
+test('offline friendship and hatching complete once, and selling an adult earns more in a clean tank', () => {
+  const [first, second] = store.getState().ownedFish
+  store.setState((s) => ({
+    ownedFish: s.ownedFish.map((f) => [first.id, second.id].includes(f.id) ? { ...f, habitat: 'nursery' as const } : f),
+    fishVitals: { ...s.fishVitals, [first.id]: { ...s.fishVitals[first.id], growth: 1 }, [second.id]: { ...s.fishVitals[second.id], growth: 1 } },
+  }))
+  assert.equal(store.getState().startFriendship(first.id, second.id), true)
+  const clutchCount = store.getState().nurserySession!.eggCount
+  store.setState({ lastTickTimestamp: Date.now() - (FRIENDSHIP_SECONDS + 600) * 1000 })
+  store.getState().applyOfflineProgress()
+  assert.equal(store.getState().ownedFish.length, 3 + clutchCount)
+  assert.equal(store.getState().nurseryEggs.length, 0)
+  for (const baby of store.getState().ownedFish.slice(3)) {
+    const [min, max] = getFishDef(baby.defId)!.sizeRange
+    assert.ok(baby.sizeScale >= min && baby.sizeScale <= max)
+  }
+  store.getState().applyOfflineProgress()
+  assert.equal(store.getState().ownedFish.length, 3 + clutchCount)
+  const baby = store.getState().ownedFish.at(-1)!
+  assert.ok(store.getState().salePrice(first.id) > store.getState().salePrice(baby.id))
+  const cleanPrice = store.getState().salePrice(first.id)
+  assert.ok(cleanPrice > FISH_CATALOG.find((f) => f.id === first.defId)!.cost)
+  store.setState({ murk: 1, waste: Array.from({ length: 25 }, (_, i) => ({ id: `w-${i}`, x: 0, z: 0, size: 1, kind: 'poop' as const })) })
+  assert.ok(store.getState().salePrice(first.id) < cleanPrice)
+  store.setState({ murk: 0, waste: [] })
+  const before = store.getState().currency
+  const price = store.getState().salePrice(first.id)
+  assert.equal(store.getState().sellFish(first.id), price)
+  assert.equal(store.getState().currency, before + price)
+  assert.equal(store.getState().fishVitals[first.id], undefined)
+  assert.equal(store.getState().sellFish(first.id), 0)
+})
+
+test('passive income is a small trickle', () => {
+  assert.ok(PASSIVE_COINS_PER_SECOND <= 0.02)
+})
+
+test('all five shops enforce level locks without spending coins', () => {
+  store.setState({ currency: 10000, xp: 0 })
+  assert.equal(store.getState().buyFish(FISH_CATALOG.find((d) => d.unlockLevel > 1)!.id), null)
+  assert.equal(store.getState().buyDecoration(DECORATION_CATALOG.find((d) => d.unlockLevel > 1)!.id), false)
+  assert.equal(store.getState().buyTreatPack(FOOD_CATALOG.find((d) => d.unlockLevel > 1)!.id), false)
+  assert.equal(store.getState().buyBackground(BACKGROUND_CATALOG.find((d) => d.unlockLevel > 1)!.id), false)
+  assert.equal(store.getState().buySubstrate(SUBSTRATE_CATALOG.find((d) => d.unlockLevel > 1)!.id), false)
+  assert.equal(store.getState().currency, 10000)
+})
+
+test('buying an available fish charges once, initializes vitals, and persists it', () => {
+  const fish = FISH_CATALOG.find((d) => d.unlockLevel === 1)!
+  store.setState({ currency: 1000 })
+  const id = store.getState().buyFish(fish.id)!
+  assert.ok(id)
+  assert.equal(store.getState().currency, 1000 - fish.cost)
+  assert.ok(store.getState().fishVitals[id])
+  assert.ok(JSON.parse(storage.get('aquarium-save')!).state.ownedFish.some((f: { id: string }) => f.id === id))
+})
+
+test('starter treats work before their shop unlock and cannot go negative', () => {
+  store.setState({ treats: { 'golden-pellet': 1 } })
+  assert.equal(store.getState().useFood('golden-pellet'), true)
+  assert.equal(store.getState().useFood('golden-pellet'), false)
+  assert.equal(store.getState().treats['golden-pellet'], 0)
+  assert.equal(store.getState().useFood('pellets'), true)
+})
+
+test('eating reduces hunger, grows fish, and grants XP', () => {
+  const id = store.getState().ownedFish[0].id
+  const before = store.getState().fishVitals[id]
+  store.getState().fishAte(id, 'growth-formula')
+  const after = store.getState().fishVitals[id]
+  assert.ok(after.hunger < before.hunger)
+  assert.equal(after.growth, before.growth + 0.25)
+  assert.equal(after.mealsEaten, 1)
+  assert.equal(store.getState().xp, 3)
+})
+
+test('uneaten food settles, rots, and vacuum rewards only actual removals', () => {
+  const count = dropFood('pellets', 0, 0)
+  for (let step = 0; step < 1200; step++) updateFood(0.05, step * 0.05)
+  assert.equal(foodItems.length, 0)
+  assert.equal(store.getState().waste.length, count)
+  const ids = store.getState().waste.map((w) => w.id)
+  const before = store.getState().currency
+  assert.equal(store.getState().removeWaste(ids), count)
+  assert.equal(store.getState().removeWaste(ids), 0)
+  assert.equal(store.getState().currency, before + count)
+  assert.equal(store.getState().waste.length, 0)
+})
+
+test('vacuum can remove leftovers before they rot', () => {
+  const count = dropFood('pellets', 0, 0)
+  for (const food of foodItems) food.state = 'resting'
+  assert.equal(vacuumFoodNear(0, 0, 1), count)
+  assert.equal(foodItems.length, 0)
+  assert.equal(store.getState().waste.length, 0)
+})
+
+test('food remains isolated by tank and main food keeps settling while nursery is shown', () => {
+  const mainCount = dropFood('pellets', 0, 0)
+  for (const food of foodItems) food.state = 'resting'
+  ui.getState().setActiveTank('nursery')
+  assert.equal(vacuumFoodNear(0, 0, 1), 0)
+  assert.equal(foodItems.length, mainCount)
+  const nurseryCount = dropFood('pellets', 0, 0)
+  assert.equal(foodItems.filter((f) => f.habitat === 'nursery').length, nurseryCount)
+  for (let step = 0; step < 1200; step++) updateFood(0.05, step * 0.05)
+  assert.equal(foodItems.length, 0)
+  assert.equal(store.getState().waste.length, mainCount)
+})
+
+test('cleanup creatures grow by grazing even when they need no hand feeding', () => {
+  const snail = FISH_CATALOG.find((f) => f.appetite === 0)!
+  const id = 'grazing-creature'
+  store.setState((s) => ({
+    ownedFish: [...s.ownedFish, { id, defId: snail.id, name: 'Munchkin', bornAt: Date.now(), habitat: 'nursery' }],
+    fishVitals: { ...s.fishVitals, [id]: { hunger: 0, growth: 0.1, mealsEaten: 0 } },
+    lastTickTimestamp: Date.now() - 3600000,
+  }))
+  store.getState().applyOfflineProgress()
+  assert.equal(store.getState().fishVitals[id].growth, 1)
+})
+
+test('water changes pay for dirty water only', () => {
+  store.setState({ murk: 0.5 })
+  const before = store.getState().currency
+  store.getState().waterChange()
+  assert.equal(store.getState().murk, 0)
+  assert.equal(store.getState().currency, before + 6)
+  store.getState().waterChange()
+  assert.equal(store.getState().currency, before + 6)
+})
+
+test('level-up rewards and offline earnings are applied once', () => {
+  store.getState().grantXp(50)
+  assert.equal(levelFromXp(store.getState().xp).level, 2)
+  assert.equal(ui.getState().levelUp?.level, 2)
+  store.setState({ lastTickTimestamp: Date.now() - 3600000 })
+  const before = store.getState().currency
+  store.getState().applyOfflineProgress()
+  const after = store.getState().currency
+  assert.ok(after > before)
+  assert.ok(ui.getState().welcomeBack)
+  store.getState().applyOfflineProgress()
+  assert.equal(store.getState().currency, after)
+})
+
+test('algae grows, scrubs, and survives a save/load roundtrip', () => {
+  storage.delete('aquarium-algae')
+  loadAlgae(0.2)
+  const before = algaeCoverage()
+  growAlgae(60, 0.2)
+  assert.ok(algaeCoverage() > before)
+  const grown = algaeCoverage()
+  assert.ok(scrubAlgae(4, 2, 1, 1) > 0)
+  assert.ok(algaeCoverage() < grown)
+  saveAlgae()
+  const saved = algaeCoverage()
+  loadAlgae(0.2)
+  assert.ok(Math.abs(algaeCoverage() - saved) < 0.004)
+})
+
+test('cleaning tools: buying requires level and coins, equips by category, and survives sanitize', () => {
+  assert.deepEqual(store.getState().ownedToolIds, ['sponge', 'vacuum'])
+  store.setState({ currency: 5000 })
+  assert.equal(store.getState().buyTool('squeegee'), false, 'locked until level 3')
+  store.setState({ xp: 10_000 })
+  assert.equal(store.getState().buyTool('squeegee'), true)
+  assert.equal(store.getState().equippedGlassTool, 'squeegee')
+  assert.equal(store.getState().equippedGravelTool, 'vacuum')
+  assert.equal(store.getState().buyTool('squeegee'), false, 'no double purchase')
+  store.getState().equipTool('sponge')
+  assert.equal(store.getState().equippedGlassTool, 'sponge')
+  store.getState().equipTool('hydro-vac')
+  assert.equal(store.getState().equippedGravelTool, 'vacuum', 'cannot equip an unowned tool')
+  const restored = migrate({ ...store.getState(), equippedGravelTool: 'hydro-vac', ownedToolIds: ['squeegee', 'bogus'] }, 4)
+  assert.deepEqual(restored.ownedToolIds, ['sponge', 'vacuum', 'squeegee'])
+  assert.equal(restored.equippedGravelTool, 'vacuum')
+})
+
+test('stands: buy, switch, and fall back to walnut for unknown saves', () => {
+  store.setState({ currency: 5000, xp: 10_000 })
+  assert.equal(store.getState().standId, 'walnut')
+  assert.equal(store.getState().buyStand('pirate'), true)
+  assert.equal(store.getState().standId, 'pirate')
+  store.getState().setStand('walnut')
+  assert.equal(store.getState().standId, 'walnut')
+  store.getState().setStand('galaxy')
+  assert.equal(store.getState().standId, 'walnut', 'cannot use a stand you do not own')
+  const restored = migrate({ ...createInitialState(), standId: 'nope', unlockedStandIds: undefined }, 4)
+  assert.equal(restored.standId, 'walnut')
+  assert.deepEqual(restored.unlockedStandIds, ['walnut'])
+})
+
+test('gadget bonuses switch on with one placed copy and slow algae and murk', async () => {
+  const { bonusesFor } = await import('../src/state/bonuses')
+  const none = bonusesFor([])
+  assert.equal(none.algaeRate, 1)
+  const placed = [
+    { id: 'a', defId: 'marimo-moss', position: [0, 0, 0] as [number, number, number], rotationY: 0 },
+    { id: 'b', defId: 'marimo-moss', position: [1, 0, 0] as [number, number, number], rotationY: 0 },
+    { id: 'c', defId: 'bubble-filter', position: [2, 0, 0] as [number, number, number], rotationY: 0 },
+    { id: 'd', defId: 'auto-feeder', position: [-2, 0, 0] as [number, number, number], rotationY: 0 },
+  ]
+  const on = bonusesFor(placed)
+  assert.equal(on.algaeRate, 0.65, 'copies do not stack')
+  assert.equal(on.murkRate, 0.6)
+  assert.equal(on.autoFeeder, true)
+
+  store.setState({ murk: 0, waste: [] })
+  store.getState().tick()
+  const plainMurk = store.getState().murk
+  store.setState({ murk: 0, placedDecorations: placed })
+  store.getState().tick()
+  assert.ok(store.getState().murk < plainMurk)
+
+  // Away for an hour: the auto-feeder keeps main-tank fish from starving.
+  const fishId = store.getState().ownedFish[0].id
+  store.setState({ lastTickTimestamp: Date.now() - 6 * 3600_000, fishVitals: { ...store.getState().fishVitals, [fishId]: { hunger: 0.2, growth: 0.3, mealsEaten: 0 } } })
+  store.getState().applyOfflineProgress()
+  assert.ok(store.getState().fishVitals[fishId].hunger <= 0.45)
+})
+
+test('relocated waste stays inside the tank', () => {
+  store.getState().addWaste(0, 0, 'poop')
+  const id = store.getState().waste[0].id
+  store.getState().relocateWaste([{ id, x: 99, z: -99 }])
+  const w = store.getState().waste[0]
+  assert.ok(Math.abs(w.x) < 4 && Math.abs(w.z) < 2)
+})
