@@ -46,7 +46,9 @@ For manual nursery QA, open `/tests/nursery.html` on a separate development-serv
 
 ## Hosting
 
-GitHub Pages deployment is configured in `.github/workflows/pages.yml`. To publish:
+Play the deployed game at [My Aquarium](https://unofficialartworks.github.io/AquariumGame/). The source lives in [UnofficialArtworks/AquariumGame](https://github.com/UnofficialArtworks/AquariumGame), and pushes to `main` automatically update the site after checks pass.
+
+GitHub Pages deployment is configured in `.github/workflows/pages.yml`. To publish a separate copy:
 
 1. Create your public GitHub repository and push this project, including `.github/workflows/pages.yml` and `package-lock.json`.
 2. In the repository, open **Settings → Pages** and set **Source** to **GitHub Actions**. No additional starter workflow is needed.

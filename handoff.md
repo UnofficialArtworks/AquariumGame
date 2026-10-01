@@ -7,7 +7,10 @@ Updated October 1, 2026 by Codex, continuing Claude's cleaning tools, gadgets, s
 - Added `.github/workflows/pages.yml`: Node.js 24, `npm ci`, lint/typecheck/tests/audit/build, Pages artifact upload and deployment. Uses official actions pinned to the revisions in Vite's current deployment guide. Checks run on PRs; publishing runs only on the repository's default branch (also supports `master` and custom names) or a manual run on that branch. Deployment uses the `github-pages` environment with minimal job permissions and serialized publishing.
 - Keeps Vite `base: './'`; built asset and favicon paths are relative and can be served below any repository name. Only `dist/` is published, excluding source, handoff, QA fixtures and development artifacts.
 - README now covers enabling Pages with **Source: GitHub Actions**, first deployment, automatic updates and rollback.
-- No GitHub remote was configured when setup began, and GitHub CLI was unavailable. Remote publication and Pages settings still require the target repository and authenticated access; the local workflow alone does not mean the site is live.
+- Published to `https://github.com/UnofficialArtworks/AquariumGame`, with local `main` tracking `origin/main`. Initial project commit: `7740f76`. Pages is enabled with `build_type: workflow` and HTTPS enforced. The existing Git Credential Manager sign-in was used for the push and GitHub API settings; no credential was printed, saved to the project, or added to the workflow.
+- **Live game:** `https://unofficialartworks.github.io/AquariumGame/`. GitHub Actions run `36935780771`, attempt 2, completed successfully: all Linux build checks and deployment passed. The first attempt finished building before Pages was enabled, so its deployment job was retried after setup.
+- Public-site browser verification: aquarium renders, all three starter fish load, the shop opens and shows items in unlock order, and no runtime errors were recorded. Existing Three.js Clock deprecation warnings remain. Screenshot: `artifacts/github-pages-live.jpg`. Localhost progress stays separate from the public site's save.
+- Future pushes to `main` rebuild and publish automatically. Revert a faulty commit and push to roll back. GitHub CLI is not installed; repository settings were configured through GitHub's official REST API.
 
 ## Latest pass (Codex: reach, menus, species variation and egg batches)
 
@@ -138,4 +141,4 @@ On this machine (W: drive), Vite's file watcher sometimes misses the second of t
 - Economy pacing, real-device performance, scene lint warnings, bundle splitting.
 - Ideas only: daily goals, achievements, party treat, octopus. No hosting, backend or accounts yet.
 
-Everything remains in the working directory; no commits were requested or created.
+The earlier Claude pass left everything uncommitted. The complete game and Pages setup have since been committed and pushed to `main`; see the deployment section above.
