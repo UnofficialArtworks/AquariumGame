@@ -11,6 +11,7 @@ import type { FishDefinition, FishpediaEntry, Rarity } from '../state/types'
 import { ItemThumbnail } from './ItemThumbnail'
 import { Modal } from './components/Modal'
 import { Button } from './components/Button'
+import { Coin } from './Coin'
 
 const RARITIES: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary']
 const ZONES: Record<FishDefinition['zone'], string> = {
@@ -78,9 +79,9 @@ function Overview() {
           const done = totals.species >= m
           const last = i === FISHPEDIA_MILESTONES.length - 1
           return (
-            <span key={m} className={`pedia-milestone ${done ? 'is-done' : ''} ${m === next ? 'is-next' : ''}`} title={`${last ? 'Every species' : `${m} species`}: 🪙 ${milestoneCoins(m)}`}>
+            <span key={m} className={`pedia-milestone ${done ? 'is-done' : ''} ${m === next ? 'is-next' : ''}`} title={`${last ? 'Every species' : `${m} species`}: ${milestoneCoins(m)} coins`}>
               <b>{done ? '✓' : last ? '★' : m}</b>
-              <small>🪙 {milestoneCoins(m)}</small>
+              <small><Coin /> {milestoneCoins(m)}</small>
             </span>
           )
         })}
@@ -88,7 +89,7 @@ function Overview() {
       <p className="pedia-next">
         {next ? (
           <>
-            <strong>{next - totals.species}</strong> more species to the next milestone (🪙 {milestoneCoins(next)})
+            <strong>{next - totals.species}</strong> more species to the next milestone (<Coin /> {milestoneCoins(next)})
           </>
         ) : (
           <>Every species found. What a collection! 🏆</>
@@ -195,7 +196,7 @@ function EntryPage({ defId }: { defId: string }) {
             <p>Reach level {def.unlockLevel} to find this one in the shop.</p>
           ) : (
             <>
-              <p>Waiting in the shop for 🪙 {def.cost.toLocaleString()}. Bring one home to fill in this page!</p>
+              <p>Waiting in the shop for <Coin /> {def.cost.toLocaleString()}. Bring one home to fill in this page!</p>
               <Button
                 onClick={() => {
                   useUIStore.getState().openModal(null)

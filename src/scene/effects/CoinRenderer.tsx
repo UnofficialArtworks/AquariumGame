@@ -3,15 +3,33 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { coinBubbles, collectCoinBubble, MAX_COINS } from '../../sim/coins'
 import { useUIStore } from '../../state/useUIStore'
+import coinUrl from '../../assets/coin.svg'
 
 const coinGeometry = new THREE.CylinderGeometry(0.06, 0.06, 0.016, 24).rotateX(Math.PI / 2)
-const coinMaterial = new THREE.MeshStandardMaterial({
+const edgeMaterial = new THREE.MeshStandardMaterial({
   color: '#ffc93d',
   metalness: 1,
   roughness: 0.22,
   emissive: '#ff9d00',
   emissiveIntensity: 0.35,
 })
+// Both faces wear the same coin art as the UI. The art's coin fills 30/32 of the image, so zoom in to its
+// edge, and turn it so the fish swims level (cylinder caps map the image a quarter-turn round).
+const coinFace = new THREE.TextureLoader().load(coinUrl)
+coinFace.colorSpace = THREE.SRGBColorSpace
+coinFace.center.set(0.5, 0.5)
+coinFace.repeat.setScalar(30 / 32)
+coinFace.rotation = Math.PI / 2
+const faceMaterial = new THREE.MeshStandardMaterial({
+  map: coinFace,
+  metalness: 0.5,
+  roughness: 0.3,
+  emissive: '#ffffff',
+  emissiveMap: coinFace,
+  emissiveIntensity: 0.3,
+})
+// Cylinder groups: side, top cap, bottom cap.
+const coinMaterial = [edgeMaterial, faceMaterial, faceMaterial]
 const shellGeometry = new THREE.SphereGeometry(1, 20, 14)
 
 const bubbleVertex = /* glsl */ `

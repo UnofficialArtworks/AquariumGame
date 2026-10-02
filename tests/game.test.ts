@@ -644,7 +644,7 @@ test('shop rules give every block a reason, and nursery babies do not fill the a
   assert.match(purchaseProblem(checkPurchase(s, 'fish', locked.id), locked.name, 0)!, new RegExp(`unlocks at level ${locked.unlockLevel}`))
   const short = checkPurchase(s, 'fish', fish.id)
   assert.equal(short.reason, 'short')
-  assert.ok(purchaseProblem(short, fish.name, 0)!.includes(`need ${fish.cost.toLocaleString()} more coins`))
+  assert.ok(purchaseProblem(short, fish.name, 0)!.includes(`costs ${fish.cost.toLocaleString()} coins. You need ${fish.cost.toLocaleString()} more.`))
   assert.equal(checkPurchase(s, 'decorations', s.unlockedDecorationDefIds[0]).reason, 'owned')
   assert.equal(checkPurchase(s, 'treats', 'pellets').reason, 'missing')
   assert.equal(checkPurchase(s, 'fish', 'not-a-fish').reason, 'missing')

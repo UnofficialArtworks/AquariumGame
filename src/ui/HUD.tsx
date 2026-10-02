@@ -10,6 +10,7 @@ import { getFoodDef } from '../scene/food/foodDefinitions'
 import { algaeCoverage } from '../sim/algae'
 import { requestPhoto } from '../scene/RenderBudget'
 import { Button } from './components/Button'
+import { Coin, CoinText, Glyph } from './Coin'
 import { Modal } from './components/Modal'
 import { Dock } from './dock/Dock'
 import { Fishpedia } from './Fishpedia'
@@ -124,7 +125,7 @@ function Coins() {
   const coins = useGameStore((s) => Math.floor(s.currency))
   return (
     <div className="stat-pill coins" title="Coins">
-      <span className="coin" aria-hidden />
+      <Coin className="coin" />
       {/* Re-keyed so the number gives a little hop whenever it changes. */}
       <strong key={coins}>{coins.toLocaleString()}</strong>
     </div>
@@ -346,13 +347,13 @@ function FishInfoCard() {
           {destination === 'nursery' ? '🫧 Nursery' : '🐠 Aquarium'}
         </Button>
         <Button variant="danger" onClick={() => setConfirmSell(true)}>
-          Sell · 🪙 {price}
+          Sell · <Coin /> {price}
         </Button>
       </div>
       {confirmSell && (
         <div className="pop-confirm">
           <p>
-            Sell {fish.name} for 🪙 {price}? This little fish will leave your tanks.{busy ? ' Their friendship visit will end.' : ''}
+            Sell {fish.name} for <Coin /> {price}? This little fish will leave your tanks.{busy ? ' Their friendship visit will end.' : ''}
           </p>
           <div>
             <Button onClick={() => setConfirmSell(false)}>Keep</Button>
@@ -387,8 +388,8 @@ function Toasts() {
     <div className="toasts" aria-live="polite">
       {toasts.map((toast) => (
         <button key={toast.id} className={`toast toast-${toast.tone}`} onClick={() => dismissToast(toast.id)}>
-          {toast.icon && <span className="toast-icon">{toast.icon}</span>}
-          <span>{toast.text}</span>
+          {toast.icon && <span className="toast-icon"><Glyph icon={toast.icon} /></span>}
+          <span><CoinText text={toast.text} /></span>
         </button>
       ))}
     </div>
@@ -407,7 +408,7 @@ function RewardModals() {
           <div className="reward">
             <div className="reward-icon">🌟</div>
             <p>
-              Your aquarium is growing! You earned <strong>🪙 {levelUp.coins}</strong>.
+              Your aquarium is growing! You earned <strong><Coin /> {levelUp.coins}</strong>.
             </p>
             {levelUp.treats.length > 0 && <p>Bonus treats: {levelUp.treats.map((t) => `${getFoodDef(t.id).name} ×${t.count}`).join(', ')}</p>}
             {levelUp.unlocks.length > 0 && (
@@ -440,7 +441,7 @@ function RewardModals() {
             <div className="reward-icon">🐠</div>
             <p>Your aquarium kept swimming while you were away for {welcomeBack.minutesAway} minutes.</p>
             <p>
-              <strong>🪙 +{welcomeBack.coins}</strong> coins earned
+              <strong><Coin /> +{welcomeBack.coins}</strong> coins earned
             </p>
             {welcomeBack.hungryFish > 0 && <p>{welcomeBack.hungryFish} fish could use a snack.</p>}
             {welcomeBack.murkPercent > 20 && <p>The water is {welcomeBack.murkPercent}% murky. Time for a clean?</p>}

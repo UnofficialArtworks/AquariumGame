@@ -1,6 +1,7 @@
 import { ItemThumbnail } from './ItemThumbnail'
 import { useUIStore } from '../state/useUIStore'
 import type { Rarity } from '../state/types'
+import { Coin, Glyph } from './Coin'
 
 interface ShopItemCardProps {
   previewKey?: string
@@ -33,11 +34,16 @@ export function ShopItemCard({ previewKey, name, description, color, swatch, ico
   const canAct = !locked && (owned ? Boolean(onEquip) && !equipped : affordable)
   // A blocked button stays tappable on touch screens so it can say why.
   const explain = !canAct && whyNot ? whyNot : undefined
-  const label = locked ? `🔒 Level ${unlockLevel}` : equipped ? '✓ In use' : owned ? (onEquip ? 'Use' : 'Owned') : affordable ? `🪙 ${cost.toLocaleString()}` : unavailableText ?? `🪙 ${cost.toLocaleString()}`
+  const price = (
+    <>
+      <Coin /> {cost.toLocaleString()}
+    </>
+  )
+  const label = locked ? `🔒 Level ${unlockLevel}` : equipped ? '✓ In use' : owned ? (onEquip ? 'Use' : 'Owned') : affordable ? price : unavailableText ?? price
   return (
     <article className={`shop-card ${locked ? 'is-locked' : ''} ${equipped ? 'is-equipped' : ''} ${rarity ? `rarity-edge-${rarity}` : ''}`} title={description}>
       <div className="shop-art" style={swatch ? { background: `linear-gradient(160deg, ${swatch[0]}, ${swatch[1]})` } : undefined}>
-        {previewKey ? <ItemThumbnail previewKey={previewKey} color={color} className="shop-thumb" /> : <span className="shop-icon">{icon ?? '✦'}</span>}
+        {previewKey ? <ItemThumbnail previewKey={previewKey} color={color} className="shop-thumb" /> : <span className="shop-icon"><Glyph icon={icon ?? '✦'} /></span>}
         {!!countOwned && <span className="shop-count">×{countOwned}</span>}
         {rarity && rarity !== 'common' && <span className={`rarity rarity-${rarity}`}>{rarity}</span>}
         {isNew && <span className="shop-new">New</span>}

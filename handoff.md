@@ -59,6 +59,14 @@ Every level from 13 to 30 now unlocks something. A test enforces this.
 - **Saves:** save version 6. `sanitize` keeps valid book entries and fills them in from owned fish, so old saves get credit for what they already have, with no retroactive rewards.
 - **Tests:** 37 pass, including late-game coverage, morph rolls and Fishpedia persistence.
 
+### Follow-up: one gold coin everywhere
+
+- The 🪙 emoji is drawn differently per device (gold on Windows, silver on Apple), so money now uses the game's own art: `src/assets/coin.svg` (gold rim, sunken face, raised fish emblem; Vite inlines it as a data URI).
+- `src/ui/Coin.tsx`: `<Coin />` for prices and rewards, `<Glyph icon>` for icon slots (swaps a '🪙' icon for the coin — toasts, food tiles, shop icons like the Golden Pellet), `<CoinText text>` for toast text.
+- Used by the HUD wallet (`.coin` sizes it, `.coin-icon` is the inline 1.15em default), shop chip and price buttons, sell button and confirm, level-up and welcome-back rewards, Fishpedia milestones and shop note.
+- Keep emoji out of `title` tooltips and rule messages: `purchaseProblem` now says "costs 6,000 coins. You need 5,000 more." and a '🪙' toast icon draws the coin.
+- The 3D coin bubbles (`CoinRenderer`) wear the same art on both faces (texture centred, zoomed to 30/32, turned a quarter so the fish swims level); the edge keeps the metal material.
+
 ### Follow-up: store tidy-up, "new" badges and clearer messages
 
 This came out of a graphify pass: `/graphify` builds `graphify-out/`, and `graphify-out/GRAPH_REPORT.md` is the report. The pass showed `useGameStore` as the hub that every system reads from. One store and one save file stays the design.
@@ -88,7 +96,7 @@ This came out of a graphify pass: `/graphify` builds `graphify-out/`, and `graph
   - otherwise the egg count, as before.
 
 **Messages.**
-- Greyed-out shop buttons for locked, too expensive or tank full stay tappable (`aria-disabled`) and pop a toast with the reason, e.g. "Celestial Dragon Koi costs 🪙 6,000. You need 5,000 more coins."
+- Greyed-out shop buttons for locked, too expensive or tank full stay tappable (`aria-disabled`) and pop a toast with the reason, e.g. "Celestial Dragon Koi costs 6,000 coins. You need 5,000 more."
 - Moving a fish and pairing friends say exactly what's wrong:
   - "The nursery is full (12/12). Move a little fish to your aquarium first."
   - "goldfish 1's clutch needs 4 free spots and the nursery has 1. Move some little fish to your aquarium first."

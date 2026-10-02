@@ -29,6 +29,7 @@ import {
 import { ShopItemCard } from '../ShopItemCard'
 import { ItemThumbnail } from '../ItemThumbnail'
 import { Button } from '../components/Button'
+import { Coin, Glyph } from '../Coin'
 
 // --- shared bits --------------------------------------------------------------
 
@@ -293,7 +294,7 @@ export function FeedDrawer() {
               title={locked ? `Unlocks at level ${food.unlockLevel}` : food.description}
               onClick={() => (empty ? openShop('treats') : setFoodId(food.id))}
             >
-              <span className="tile-icon">{food.icon}</span>
+              <span className="tile-icon"><Glyph icon={food.icon} /></span>
               <strong>{food.name}</strong>
               <span className="tile-badge">{locked ? `🔒 ${food.unlockLevel}` : food.unlimited ? 'Free' : `×${count}`}</span>
             </button>
@@ -301,7 +302,7 @@ export function FeedDrawer() {
         })}
       </div>
       <p className="drawer-foot">
-        <span className="tile-icon-sm">{selected.icon}</span> {selected.description}
+        <span className="tile-icon-sm"><Glyph icon={selected.icon} /></span> {selected.description}
       </p>
     </>
   )
@@ -553,7 +554,7 @@ export function ShopDrawer() {
   return (
     <>
       <DrawerHead title="Shop" hint={shopTab === 'fish' ? `${tab.note} ${mainTankCount(ownedFish)}/${MAX_OWNED_FISH} in your aquarium.` : tab.note}>
-        <span className="chip chip-coins">🪙 {coins.toLocaleString()}</span>
+        <span className="chip chip-coins"><Coin /> {coins.toLocaleString()}</span>
       </DrawerHead>
       <div className="subtabs" role="tablist" aria-label="Shop categories">
         {SHOP_TABS.map((t) => {

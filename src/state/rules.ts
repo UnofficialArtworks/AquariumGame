@@ -107,7 +107,7 @@ export function purchaseProblem(check: PurchaseCheck, name: string, currency: nu
     case 'locked':
       return `${name} unlocks at level ${check.unlockLevel}.`
     case 'short':
-      return `${name} costs 🪙 ${check.cost.toLocaleString()}. You need ${Math.ceil(check.cost - currency).toLocaleString()} more coins.`
+      return `${name} costs ${check.cost.toLocaleString()} coins. You need ${Math.ceil(check.cost - currency).toLocaleString()} more.`
     case 'full':
       return `Your aquarium is full (${MAX_OWNED_FISH}/${MAX_OWNED_FISH}). Move a fish to the nursery or sell one to make room.`
     case 'owned':
