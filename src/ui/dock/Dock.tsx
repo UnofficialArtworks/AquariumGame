@@ -2,6 +2,8 @@ import { useEffect, useRef, type CSSProperties } from 'react'
 import { useGameStore } from '../../state/useGameStore'
 import { useUIStore, type DockTab } from '../../state/useUIStore'
 import { algaeCoverage } from '../../sim/algae'
+import { levelFromXp } from '../../state/progression'
+import { newShopCount } from '../../state/rules'
 import { CleanDrawer, DecorateDrawer, FeedDrawer, ShopDrawer, WatchDrawer } from './drawers'
 import { screenInsets } from '../screenInsets'
 
@@ -36,7 +38,13 @@ function useBadges() {
     return n
   })
   const dirty = useGameStore((s) => s.murk > 0.4 || s.waste.length >= 6 || algaeCoverage() > 0.4)
-  return { feed: hungry > 0 ? String(hungry) : null, clean: dirty ? '!' : null } as Partial<Record<DockTab, string | null>>
+  // Things unlocked since the player last browsed the shop.
+  const fresh = useGameStore((s) => newShopCount(s.seen.shopLevel, levelFromXp(s.xp).level))
+  return {
+    feed: hungry > 0 ? String(hungry) : null,
+    clean: dirty ? '!' : null,
+    shop: fresh > 0 ? (fresh > 9 ? '9+' : String(fresh)) : null,
+  } as Partial<Record<DockTab, string | null>>
 }
 
 /**

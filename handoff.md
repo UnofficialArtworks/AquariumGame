@@ -59,6 +59,45 @@ Every level from 13 to 30 now unlocks something. A test enforces this.
 - **Saves:** save version 6. `sanitize` keeps valid book entries and fills them in from owned fish, so old saves get credit for what they already have, with no retroactive rewards.
 - **Tests:** 37 pass, including late-game coverage, morph rolls and Fishpedia persistence.
 
+### Follow-up: store tidy-up, "new" badges and clearer messages
+
+This came out of a graphify pass: `/graphify` builds `graphify-out/`, and `graphify-out/GRAPH_REPORT.md` is the report. The pass showed `useGameStore` as the hub that every system reads from. One store and one save file stays the design.
+
+**Shared rules.** `src/state/rules.ts` (new) says what the player may do and why not. The store enforces these rules and the UI uses the same functions, so they can't drift apart.
+- `checkPurchase(state, category, id)` returns `{ ok, reason: missing | locked | owned | full | short, cost, unlockLevel }`.
+- `purchaseProblem` turns that into a sentence. `purchaseXp` holds the old `max(3, cost/20)` XP rule.
+- `transferProblem` and `friendshipProblem` give the reason as a string, or `null` when the action is allowed.
+- `nurseryOccupancy`, `mainTankCount`, `friendshipReady`, `newHatchlings` and the shop "new" helpers (`newShopCount`, `newShopItems`, `firstNewShopCategory`, `isNewInShop`).
+- `ShopTab` in `useUIStore` is now `ShopCategory` from `rules.ts`.
+
+**Store** (668 → 539 lines).
+- The seven buy actions go through one local `purchase(category, id, unlock, xp?)` helper.
+- `progressNursery` moved to `nursery.ts`, still pure.
+- The Fishpedia reward maths moved to `discoveryRewards()` in `fishpedia.ts`. `noteFish` now only applies the result and shows the toasts.
+- `partialize` saves `SAVED_KEYS`, which comes from `Object.keys(createInitialState())`. A new `GameState` field is saved automatically, and a test checks that the saved keys match.
+
+**Bug fixed.** The shop counted nursery fish toward the 30-fish limit, but the store only counts the main tank. With babies in the nursery, the shop could wrongly say "Tank full". Its hint now reads "n/30 in your aquarium".
+
+**"New" badges.** The new `GameState.seen` holds `{ shopLevel, nurseryAt }`. It needs no save version bump: `sanitize` treats old saves as caught up, setting `shopLevel` to the current level so the whole shop doesn't light up.
+- **Shop:** the dock button counts items unlocked since the last browse.
+  - Opening the drawer marks them seen (`markShopSeen`). During that visit the cards wear a "New" tag and their tabs get a dot.
+  - The level-up modal's "Visit shop" opens the first tab with something new.
+- **Nursery** (top-bar tab):
+  - a coral count for babies hatched since the last visit, cleared by `markNurserySeen` when the nursery is shown;
+  - otherwise a pink ♥ when two grown fish could pair, shown only while you're in the main tank;
+  - otherwise the egg count, as before.
+
+**Messages.**
+- Greyed-out shop buttons for locked, too expensive or tank full stay tappable (`aria-disabled`) and pop a toast with the reason, e.g. "Celestial Dragon Koi costs 🪙 6,000. You need 5,000 more coins."
+- Moving a fish and pairing friends say exactly what's wrong:
+  - "The nursery is full (12/12). Move a little fish to your aquarium first."
+  - "goldfish 1's clutch needs 4 free spots and the nursery has 1. Move some little fish to your aquarium first."
+  - "Poppy needs to finish growing first (60% grown)."
+
+  The pairing form shows its problem in yellow under the button.
+
+**Checks.** 42 tests pass, 5 of them new: shop reasons and the nursery-babies case, move and pairing messages, badges and legacy saves, the saved keys, and grouped Fishpedia rewards. Verified in the QA page: shop badge 5 at level 30 when last seen at 25, New tags, tab dots, the tap-to-explain toast, the nursery pips and the warnings.
+
 ### Follow-up: fair feeding (hungry fish first)
 
 Slow new species (octopus, sea turtle, starry pleco; all max speed 0.35) got zero meals in a mixed tank: fast fish cleared each pinch first, and one big fish could eat a whole pinch in a second. Changes in `useFishBrain.ts`:

@@ -1497,7 +1497,7 @@ button:disabled {
   border-color: var(--aqua);
 }
 
-.shop-card.is-locked .shop-art > *:not(.rarity) {
+.shop-card.is-locked .shop-art > *:not(.rarity):not(.shop-new) {
   filter: grayscale(0.7) brightness(0.65);
 }
 
@@ -1606,7 +1606,7 @@ button:disabled {
   transition: transform 0.08s ease, filter 0.15s ease;
 }
 
-.shop-buy:hover:not(:disabled) {
+.shop-buy:hover:not(:disabled):not([aria-disabled='true']) {
   filter: brightness(1.08);
 }
 
@@ -1628,12 +1628,14 @@ button:disabled {
   color: #04312f;
 }
 
-.shop-buy:disabled {
+.shop-buy:disabled,
+.shop-buy[aria-disabled='true'] {
   background: rgba(255, 255, 255, 0.08);
   color: var(--ink-faint);
 }
 
-.shop-buy.is-short:disabled {
+.shop-buy.is-short:disabled,
+.shop-buy.is-short[aria-disabled='true'] {
   color: rgba(255, 208, 120, 0.6);
 }
 
@@ -2381,4 +2383,46 @@ button:disabled {
 
 .pedia-art-lg .pedia-thumb {
   transform: scale(1.55);
+}
+
+/* --- "new" markers: shop items, shop tabs, nursery ------------------------------ */
+
+.shop-new {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--coral);
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 8px rgba(255, 90, 80, 0.45);
+}
+
+.subtab-dot {
+  width: 7px;
+  height: 7px;
+  margin-left: 1px;
+  border-radius: 50%;
+  background: var(--coral);
+  box-shadow: 0 0 0 2px rgba(255, 90, 80, 0.25);
+}
+
+.pip.is-new {
+  background: var(--coral);
+  color: white;
+  box-shadow: 0 2px 8px rgba(255, 90, 80, 0.55);
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+.pip.is-ready {
+  background: #ff8fc0;
+  color: #4a0f2a;
+}
+
+.fine-print.is-warn {
+  color: var(--warn);
 }

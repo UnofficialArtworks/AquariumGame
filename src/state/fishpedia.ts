@@ -1,5 +1,5 @@
 import { FISH_CATALOG, getFishDef } from '../scene/fish/fishDefinitions'
-import { getMorph, MORPHS } from './morphs'
+import { getMorph, MORPHS, speciesLabel } from './morphs'
 import type { FishInstance, FishpediaEntry, MorphId, Rarity } from './types'
 
 export type Fishpedia = Record<string, FishpediaEntry>
@@ -54,6 +54,43 @@ export function recordFish(book: Fishpedia, fish: FishInstance[], hatched: boole
   }
   found.book = next
   return found
+}
+
+export interface DiscoveryRewards {
+  coins: number
+  xp: number
+  /** New entries, for the Fishpedia button's badge. */
+  news: number
+  /** Celebration messages, in the order they should pop up. */
+  toasts: Array<{ text: string; icon: string }>
+}
+
+/** What a batch of discoveries pays out, and how to announce it. */
+export function discoveryRewards(before: Fishpedia, found: Discoveries): DiscoveryRewards {
+  const reward: DiscoveryRewards = { coins: 0, xp: 0, news: found.species.length + found.morphs.length + found.bred.length, toasts: [] }
+  let speciesXp = 0
+  for (const id of found.species) {
+    const def = getFishDef(id)!
+    speciesXp += DISCOVERY_XP[def.rarity]
+    if (found.species.length <= 2) reward.toasts.push({ text: `New Fishpedia entry: ${def.name}! +${DISCOVERY_XP[def.rarity]} XP`, icon: '📖' })
+  }
+  if (found.species.length > 2) reward.toasts.push({ text: `${found.species.length} new Fishpedia entries! +${speciesXp} XP`, icon: '📖' })
+  reward.xp += speciesXp
+  for (const id of found.bred) {
+    const def = getFishDef(id)!
+    reward.coins += BRED_COINS[def.rarity]
+    reward.toasts.push({ text: `${def.name} earned its nursery stamp in the Fishpedia! +${BRED_COINS[def.rarity]} coins`, icon: '🐣' })
+  }
+  for (const { defId, morph } of found.morphs) {
+    reward.coins += MORPH_COINS
+    reward.xp += MORPH_XP
+    reward.toasts.push({ text: `So rare! A ${speciesLabel(getFishDef(defId)!, morph)} hatched! +${MORPH_COINS} coins`, icon: getMorph(morph)?.icon ?? '✨' })
+  }
+  for (const count of milestonesCrossed(speciesCount(before), speciesCount(found.book))) {
+    reward.coins += milestoneCoins(count)
+    reward.toasts.push({ text: `Fishpedia milestone: ${count} species collected! +${milestoneCoins(count)} coins`, icon: '🏆' })
+  }
+  return reward
 }
 
 export function speciesCount(book: Fishpedia): number {

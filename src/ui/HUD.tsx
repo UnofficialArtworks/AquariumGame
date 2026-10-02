@@ -4,6 +4,7 @@ import { useUIStore, type DockTab } from '../state/useUIStore'
 import { levelFromXp, MAX_LEVEL } from '../state/progression'
 import { getFishDef } from '../scene/fish/fishDefinitions'
 import { inheritedDefinition } from '../state/nursery'
+import { firstNewShopCategory, friendshipReady, newHatchlings, transferProblem } from '../state/rules'
 import { getMorph, speciesLabel } from '../state/morphs'
 import { getFoodDef } from '../scene/food/foodDefinitions'
 import { algaeCoverage } from '../sim/algae'
@@ -87,6 +88,12 @@ function AquariumName() {
 function TankSwitch() {
   const activeTank = useUIStore((s) => s.activeTank)
   const eggs = useGameStore((s) => s.nurseryEggs.length)
+  const hatchlings = useGameStore(newHatchlings)
+  const ready = useGameStore(friendshipReady)
+  // Looking in the nursery counts as having seen its new babies.
+  useEffect(() => {
+    if (activeTank === 'nursery') useGameStore.getState().markNurserySeen()
+  }, [activeTank, hatchlings])
   const go = (tank: 'main' | 'nursery') => {
     const ui = useUIStore.getState()
     if (ui.activeTank === tank) return
@@ -101,7 +108,13 @@ function TankSwitch() {
       </button>
       <button role="tab" aria-selected={activeTank === 'nursery'} className={activeTank === 'nursery' ? 'is-active' : ''} onClick={() => go('nursery')}>
         <span aria-hidden>🫧</span> Nursery
-        {eggs > 0 && <em className="pip" title={`${eggs} egg${eggs === 1 ? '' : 's'}`}>{eggs}</em>}
+        {hatchlings > 0 ? (
+          <em className="pip is-new" title={`${hatchlings} new hatchling${hatchlings === 1 ? '' : 's'}`}>{hatchlings}</em>
+        ) : ready && activeTank !== 'nursery' ? (
+          <em className="pip is-ready" title="Two grown fish are ready to become friends">♥</em>
+        ) : (
+          eggs > 0 && <em className="pip" title={`${eggs} egg${eggs === 1 ? '' : 's'}`}>{eggs}</em>
+        )}
       </button>
     </div>
   )
@@ -322,10 +335,12 @@ function FishInfoCard() {
           disabled={busy}
           title={busy ? 'Wait for this friendship visit to finish' : undefined}
           onClick={() => {
-            if (transferFish(fish.id, destination)) {
+            const problem = transferProblem(useGameStore.getState(), fish.id, destination)
+            if (problem) pushToast(problem, 'warn')
+            else if (transferFish(fish.id, destination)) {
               selectFish(null)
               pushToast(`${fish.name} moved to ${destination === 'nursery' ? 'the nursery' : 'your aquarium'}`, 'success', '🐠')
-            } else pushToast('No room there right now', 'warn')
+            }
           }}
         >
           {destination === 'nursery' ? '🫧 Nursery' : '🐠 Aquarium'}
@@ -406,7 +421,7 @@ function RewardModals() {
                 <Button
                   onClick={() => {
                     setLevelUp(null)
-                    useUIStore.getState().openShop()
+                    useUIStore.getState().openShop(firstNewShopCategory(useGameStore.getState().seen.shopLevel, levelUp.level))
                   }}
                 >
                   🛍️ Visit shop

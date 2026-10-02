@@ -1,7 +1,9 @@
 import { create } from 'zustand'
+import type { ShopCategory } from './rules'
 
 export type ModalId = 'shop' | 'help' | 'fishpedia' | null
-export type ShopTab = 'fish' | 'decorations' | 'treats' | 'tools' | 'backgrounds' | 'gravel' | 'stands'
+/** Shop drawer tabs: one per shop category. */
+export type ShopTab = ShopCategory
 export type AppMode = 'view' | 'feed' | 'clean' | 'decorate'
 /** The bottom dock's tabs: every game mode plus the shop. */
 export type DockTab = AppMode | 'shop'

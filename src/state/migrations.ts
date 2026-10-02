@@ -10,6 +10,7 @@ import { pickFishName } from './names'
 import { NURSERY_CAPACITY } from './economy'
 import { recordFish, sanitizeFishpedia, type Fishpedia } from './fishpedia'
 import { getMorph } from './morphs'
+import { levelFromXp } from './progression'
 
 export const CURRENT_SAVE_VERSION = 6
 
@@ -89,6 +90,7 @@ export function createInitialState(): GameState {
     },
     settings: { sound: true },
     fishpedia: backfillFishpedia({}, ownedFish),
+    seen: { shopLevel: 1, nurseryAt: now },
   }
 }
 
@@ -147,6 +149,14 @@ export function sanitize(state: Partial<GameState>): GameState {
     })
     .filter((f) => getFishDef(f.defId))
   merged.fishpedia = backfillFishpedia(sanitizeFishpedia(state.fishpedia), merged.ownedFish)
+  // Saves from before the "new" badges count everything so far as seen,
+  // rather than flagging the whole shop as new.
+  const level = levelFromXp(merged.xp).level
+  const seen = state.seen
+  merged.seen = {
+    shopLevel: Number.isFinite(seen?.shopLevel) ? Math.max(1, Math.min(level, seen!.shopLevel)) : level,
+    nurseryAt: Number.isFinite(seen?.nurseryAt) ? seen!.nurseryAt : Date.now(),
+  }
   for (const f of merged.ownedFish) {
     if (!merged.fishVitals[f.id]) merged.fishVitals = { ...merged.fishVitals, [f.id]: freshVitals(0.4) }
   }

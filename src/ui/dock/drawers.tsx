@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useGameStore } from '../../state/useGameStore'
 import { useUIStore, type ShopTab } from '../../state/useUIStore'
 import { levelFromXp } from '../../state/progression'
@@ -14,6 +14,18 @@ import { algaeCoverage } from '../../sim/algae'
 import { startWaterChange, waterChange } from '../../sim/waterChange'
 import { FRIENDSHIP_SECONDS, NURSERY_CAPACITY } from '../../state/economy'
 import { getEggCountRange, inheritedDefinition } from '../../state/nursery'
+import {
+  checkPurchase,
+  friendshipProblem,
+  isNewInShop,
+  mainTankCount,
+  newShopItems,
+  nurseryOccupancy,
+  purchaseProblem,
+  transferProblem,
+  type PurchaseState,
+  type ShopCategory,
+} from '../../state/rules'
 import { ShopItemCard } from '../ShopItemCard'
 import { ItemThumbnail } from '../ItemThumbnail'
 import { Button } from '../components/Button'
@@ -93,8 +105,9 @@ function FishCard({ fishId, destination }: { fishId: string; destination: 'main'
         title={busy ? 'Wait for the friendship visit to finish' : `Move ${fish.name} to ${where}`}
         aria-label={`Move ${fish.name} to ${where}`}
         onClick={() => {
-          if (transferFish(fishId, destination)) pushToast(`${fish.name} moved to ${where}`, 'success', '🐠')
-          else pushToast('No room there right now', 'warn')
+          const problem = transferProblem(useGameStore.getState(), fishId, destination)
+          if (problem) pushToast(problem, 'warn')
+          else if (transferFish(fishId, destination)) pushToast(`${fish.name} moved to ${where}`, 'success', '🐠')
         }}
       >
         {destination === 'nursery' ? '🫧' : '🐠'}
@@ -129,14 +142,12 @@ function NurseryContent() {
   const [second, setSecond] = useState('')
   const nurseryFish = fish.filter((f) => f.habitat === 'nursery')
   const grown = nurseryFish.filter((f) => (vitals[f.id]?.growth ?? 0) >= 1)
-  const occupied = nurseryFish.length + eggs.length + (session?.eggCount ?? 0)
+  const tanks = { ownedFish: fish, fishVitals: vitals, nurseryEggs: eggs, nurserySession: session }
+  const occupied = nurseryOccupancy(tanks)
   const firstFriend = grown.find((f) => f.id === first)
   const clutch = firstFriend ? getEggCountRange(firstFriend.defId) : undefined
-  const ready =
-    first !== second &&
-    grown.some((f) => f.id === first) &&
-    grown.some((f) => f.id === second) &&
-    occupied + (clutch?.[1] ?? NURSERY_CAPACITY) <= NURSERY_CAPACITY
+  const problem = first && second ? friendshipProblem(tanks, first, second) : null
+  const ready = Boolean(first && second) && !problem
   const nameOf = (id?: string) => fish.find((f) => f.id === id)?.name
   return (
     <>
@@ -190,6 +201,7 @@ function NurseryContent() {
                     : 'The first friend decides how many eggs (1–6). Babies get shape and colours from their parents.'}
                 {occupied >= NURSERY_CAPACITY && ' The nursery is full.'}
               </p>
+              {problem && <p className="fine-print is-warn">{problem}</p>}
               <Button
                 variant="primary"
                 disabled={!ready}
@@ -198,7 +210,7 @@ function NurseryContent() {
                     setFirst('')
                     setSecond('')
                     pushToast('A new friendship is blooming!', 'success', '💗')
-                  } else pushToast('These fish are not ready yet', 'warn')
+                  } else pushToast(friendshipProblem(useGameStore.getState(), first, second) ?? 'These fish are not ready yet.', 'warn')
                 }}
               >
                 Start friendship
@@ -489,12 +501,16 @@ function sortShopItems<T extends { unlockLevel: number }>(items: readonly T[], p
     .map(({ item }) => item)
 }
 
+const WHY_ICON = { locked: '🔒', short: '🪙', full: '🐠' } as const
+
 export function ShopDrawer() {
   const shopTab = useUIStore((s) => s.shopTab)
   const setShopTab = useUIStore((s) => s.setShopTab)
   const pushToast = useUIStore((s) => s.pushToast)
+  const open = useUIStore((s) => s.dock === 'shop' && s.trayOpen)
   const coins = useGameStore((s) => Math.floor(s.currency))
-  const level = useGameStore((s) => levelFromXp(s.xp).level)
+  const xp = useGameStore((s) => s.xp)
+  const level = levelFromXp(xp).level
   const g = useGameStore.getState()
   const unlockedDecorationDefIds = useGameStore((s) => s.unlockedDecorationDefIds)
   const ownedFish = useGameStore((s) => s.ownedFish)
@@ -508,22 +524,48 @@ export function ShopDrawer() {
   const ownedToolIds = useGameStore((s) => s.ownedToolIds)
   const equippedGlassTool = useGameStore((s) => s.equippedGlassTool)
   const equippedGravelTool = useGameStore((s) => s.equippedGravelTool)
-  const fishAtCap = ownedFish.length >= MAX_OWNED_FISH
   const tab = SHOP_TABS.find((t) => t.id === shopTab) ?? SHOP_TABS[0]
-  const locked = (unlockLevel: number) => (level < unlockLevel ? unlockLevel : undefined)
+  const buyState: PurchaseState = { xp, currency: coins, ownedFish, unlockedDecorationDefIds, unlockedBackgroundIds, unlockedSubstrateIds, unlockedStandIds, ownedToolIds }
+
+  // Things unlocked since the last visit wear a "New" tag for this whole
+  // visit, even though opening the shop marks them as seen straight away.
+  const seenLevel = useGameStore((s) => s.seen.shopLevel)
+  const [visit, setVisit] = useState<{ open: boolean; since: number | null }>({ open: false, since: null })
+  if (visit.open !== open) setVisit({ open, since: open ? seenLevel : null })
+  const newSince = visit.since
+  useEffect(() => {
+    if (open) useGameStore.getState().markShopSeen()
+  }, [open, level])
+
+  /** Lock, price and "why not" for a card, straight from the shop rules. */
+  const card = (category: ShopCategory, id: string, name: string, unlockLevel: number) => {
+    const check = checkPurchase(buyState, category, id)
+    const reason = check.reason === 'locked' || check.reason === 'short' || check.reason === 'full' ? check.reason : undefined
+    return {
+      unlockLevel: check.reason === 'locked' ? check.unlockLevel : undefined,
+      affordable: check.ok,
+      unavailableText: check.reason === 'full' ? 'Tank full' : undefined,
+      isNew: newSince !== null && check.reason !== 'owned' && isNewInShop(unlockLevel, newSince, level),
+      whyNot: reason ? { text: purchaseProblem(check, name, coins)!, icon: WHY_ICON[reason] } : undefined,
+    }
+  }
 
   return (
     <>
-      <DrawerHead title="Shop" hint={shopTab === 'fish' ? `${tab.note} ${ownedFish.length}/${MAX_OWNED_FISH} creatures.` : tab.note}>
+      <DrawerHead title="Shop" hint={shopTab === 'fish' ? `${tab.note} ${mainTankCount(ownedFish)}/${MAX_OWNED_FISH} in your aquarium.` : tab.note}>
         <span className="chip chip-coins">🪙 {coins.toLocaleString()}</span>
       </DrawerHead>
       <div className="subtabs" role="tablist" aria-label="Shop categories">
-        {SHOP_TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={t.id === shopTab} className={`subtab ${t.id === shopTab ? 'is-active' : ''}`} onClick={() => setShopTab(t.id)}>
-            <span>{t.icon}</span>
-            {t.name}
-          </button>
-        ))}
+        {SHOP_TABS.map((t) => {
+          const fresh = newSince !== null && newShopItems(t.id, newSince, level).length > 0
+          return (
+            <button key={t.id} role="tab" aria-selected={t.id === shopTab} className={`subtab ${t.id === shopTab ? 'is-active' : ''}`} onClick={() => setShopTab(t.id)}>
+              <span>{t.icon}</span>
+              {t.name}
+              {fresh && <span className="subtab-dot" title="Something new" />}
+            </button>
+          )
+        })}
       </div>
       <div className="shop-grid">
         {shopTab === 'fish' &&
@@ -536,13 +578,10 @@ export function ShopDrawer() {
               color={def.color}
               cost={def.cost}
               rarity={def.rarity}
-              unlockLevel={locked(def.unlockLevel)}
+              {...card('fish', def.id, def.name, def.unlockLevel)}
               countOwned={ownedFish.filter((f) => f.defId === def.id).length}
-              affordable={coins >= def.cost && !fishAtCap}
-              unavailableText={fishAtCap ? 'Tank full' : undefined}
               onBuy={() => {
                 if (g.buyFish(def.id)) pushToast(`${def.name} joined your aquarium!`, 'success', '🐠')
-                else if (fishAtCap) pushToast('Your tank is full', 'warn')
               }}
             />
           ))}
@@ -557,9 +596,8 @@ export function ShopDrawer() {
               cost={def.cost}
               rarity={def.rarity}
               badge={def.bonus?.label}
-              unlockLevel={locked(def.unlockLevel)}
+              {...card('decorations', def.id, def.name, def.unlockLevel)}
               owned={unlockedDecorationDefIds.includes(def.id)}
-              affordable={coins >= def.cost}
               onBuy={() => {
                 if (g.buyDecoration(def.id))
                   pushToast(def.bonus ? `${def.name} added! Place it to switch on its bonus.` : `${def.name} added to your decorations!`, 'success', def.bonus ? '✨' : '🪸')
@@ -578,8 +616,7 @@ export function ShopDrawer() {
               packSize={def.unlimited ? undefined : def.packSize}
               owned={def.unlimited}
               countOwned={def.unlimited ? undefined : treats[def.id] ?? 0}
-              unlockLevel={locked(def.unlockLevel)}
-              affordable={coins >= def.packCost}
+              {...card('treats', def.id, def.name, def.unlockLevel)}
               onBuy={() => {
                 if (g.buyTreatPack(def.id)) pushToast(`${def.packSize} ${def.name} added!`, 'success', def.icon)
               }}
@@ -598,8 +635,7 @@ export function ShopDrawer() {
               badge={`${def.category === 'glass' ? 'Glass' : 'Gravel'} · ${def.stat}`}
               owned={ownedToolIds.includes(def.id)}
               equipped={def.id === equippedGlassTool || def.id === equippedGravelTool}
-              unlockLevel={locked(def.unlockLevel)}
-              affordable={coins >= def.cost}
+              {...card('tools', def.id, def.name, def.unlockLevel)}
               onBuy={() => {
                 if (g.buyTool(def.id)) pushToast(`${def.name} is ready in Clean mode!`, 'success', def.icon)
               }}
@@ -621,8 +657,7 @@ export function ShopDrawer() {
               cost={def.cost}
               owned={unlockedBackgroundIds.includes(def.id)}
               equipped={backgroundId === def.id}
-              unlockLevel={locked(def.unlockLevel)}
-              affordable={coins >= def.cost}
+              {...card('backgrounds', def.id, def.name, def.unlockLevel)}
               onBuy={() => {
                 if (g.buyBackground(def.id)) pushToast(`${def.name} is your new backdrop!`, 'success', '🌅')
               }}
@@ -641,8 +676,7 @@ export function ShopDrawer() {
               cost={def.cost}
               owned={unlockedSubstrateIds.includes(def.id)}
               equipped={substrateId === def.id}
-              unlockLevel={locked(def.unlockLevel)}
-              affordable={coins >= def.cost}
+              {...card('gravel', def.id, def.name, def.unlockLevel)}
               onBuy={() => {
                 if (g.buySubstrate(def.id)) pushToast(`${def.name} is now in your tank!`, 'success', '🪨')
               }}
@@ -662,8 +696,7 @@ export function ShopDrawer() {
               rarity={def.rarity}
               owned={unlockedStandIds.includes(def.id)}
               equipped={standId === def.id}
-              unlockLevel={locked(def.unlockLevel)}
-              affordable={coins >= def.cost}
+              {...card('stands', def.id, def.name, def.unlockLevel)}
               onBuy={() => {
                 if (g.buyStand(def.id)) pushToast(`${def.name} installed!`, 'success', def.icon)
               }}

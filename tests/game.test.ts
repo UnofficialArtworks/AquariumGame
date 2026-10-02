@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
 import './cleaning.test'
-import { createInitialState, migrate } from '../src/state/migrations'
-import { FISH_CATALOG, getFishDef } from '../src/scene/fish/fishDefinitions'
+import { createInitialState, freshVitals, migrate } from '../src/state/migrations'
+import { FISH_CATALOG, getFishDef, MAX_OWNED_FISH } from '../src/scene/fish/fishDefinitions'
+import { STAND_CATALOG } from '../src/scene/stands/standDefinitions'
+import { TOOL_CATALOG } from '../src/scene/cleaning/toolDefinitions'
 import { DECORATION_CATALOG } from '../src/scene/decorations/decorationDefinitions'
 import { BACKGROUND_CATALOG } from '../src/scene/backgrounds'
 import { SUBSTRATE_CATALOG } from '../src/scene/substrates'
@@ -11,7 +13,17 @@ import { levelFromXp } from '../src/state/progression'
 import { FRIENDSHIP_SECONDS, NURSERY_CAPACITY, PASSIVE_COINS_PER_SECOND, sizeForGrowth } from '../src/state/economy'
 import { createNurseryEgg, getEggCountRange, getEggHatchRange, inheritedDefinition } from '../src/state/nursery'
 import { getMorph, rollMorph } from '../src/state/morphs'
-import { BRED_COINS, DISCOVERY_XP, MORPH_COINS } from '../src/state/fishpedia'
+import { BRED_COINS, DISCOVERY_XP, discoveryRewards, MORPH_COINS, recordFish } from '../src/state/fishpedia'
+import {
+  checkPurchase,
+  firstNewShopCategory,
+  friendshipProblem,
+  friendshipReady,
+  newHatchlings,
+  newShopCount,
+  purchaseProblem,
+  transferProblem,
+} from '../src/state/rules'
 import type { FishInstance } from '../src/state/types'
 
 /** A fish's own colours under any morph: what it passes on to its eggs. */
@@ -621,4 +633,102 @@ test('fishpedia records each species once, nursery stamps and morphs, with rewar
   // Old saves without a book get one filled in from the fish they own.
   const { fishpedia: _book, ...legacy } = saved
   assert.ok(migrate(legacy, 5).fishpedia[fresh.id])
+})
+
+test('shop rules give every block a reason, and nursery babies do not fill the aquarium', () => {
+  const fish = FISH_CATALOG.find((d) => d.unlockLevel === 1)!
+  const locked = FISH_CATALOG.find((d) => d.unlockLevel > 1)!
+  store.setState({ currency: 0, xp: 0 })
+  const s = store.getState()
+  assert.equal(checkPurchase(s, 'fish', locked.id).reason, 'locked')
+  assert.match(purchaseProblem(checkPurchase(s, 'fish', locked.id), locked.name, 0)!, new RegExp(`unlocks at level ${locked.unlockLevel}`))
+  const short = checkPurchase(s, 'fish', fish.id)
+  assert.equal(short.reason, 'short')
+  assert.ok(purchaseProblem(short, fish.name, 0)!.includes(`need ${fish.cost.toLocaleString()} more coins`))
+  assert.equal(checkPurchase(s, 'decorations', s.unlockedDecorationDefIds[0]).reason, 'owned')
+  assert.equal(checkPurchase(s, 'treats', 'pellets').reason, 'missing')
+  assert.equal(checkPurchase(s, 'fish', 'not-a-fish').reason, 'missing')
+
+  // One spot left in the aquarium, plus babies in the nursery: still room for one more.
+  const template = s.ownedFish[0]
+  const crowd = Array.from({ length: MAX_OWNED_FISH - 1 }, (_, i) => ({ ...template, id: `crowd-${i}`, habitat: 'main' as const }))
+  const babies = Array.from({ length: 3 }, (_, i) => ({ ...template, id: `baby-${i}`, habitat: 'nursery' as const }))
+  const everyone = [...crowd, ...babies]
+  store.setState({ currency: 100000, ownedFish: everyone, fishVitals: Object.fromEntries(everyone.map((f) => [f.id, freshVitals()])) })
+  assert.equal(checkPurchase(store.getState(), 'fish', fish.id).ok, true)
+  assert.ok(store.getState().buyFish(fish.id))
+  assert.equal(checkPurchase(store.getState(), 'fish', fish.id).reason, 'full')
+  assert.equal(store.getState().buyFish(fish.id), null)
+  assert.match(transferProblem(store.getState(), 'baby-0', 'main')!, /aquarium is full/)
+  assert.equal(store.getState().transferFish('baby-0', 'main'), false)
+})
+
+test('moving and pairing fish explain exactly why they cannot happen', () => {
+  const [first, second, third] = store.getState().ownedFish
+  assert.match(friendshipProblem(store.getState(), first.id, second.id)!, new RegExp(`${first.name} needs to be in the nursery`))
+  store.setState((s) => ({ ownedFish: s.ownedFish.map((f) => (f.id === first.id || f.id === second.id ? { ...f, habitat: 'nursery' as const } : f)) }))
+  assert.match(friendshipProblem(store.getState(), first.id, second.id)!, /needs to finish growing first \(\d+% grown\)/)
+  assert.equal(friendshipReady(store.getState()), false)
+  store.setState((s) => ({
+    fishVitals: { ...s.fishVitals, [first.id]: { ...s.fishVitals[first.id], growth: 1 }, [second.id]: { ...s.fishVitals[second.id], growth: 1 } },
+  }))
+  assert.equal(friendshipProblem(store.getState(), first.id, second.id), null)
+  assert.equal(friendshipProblem(store.getState(), first.id, first.id), 'Pick two different fish.')
+  assert.equal(friendshipReady(store.getState()), true)
+  assert.equal(store.getState().startFriendship(first.id, second.id), true)
+  assert.match(friendshipProblem(store.getState(), first.id, second.id)!, /already under way/)
+  assert.equal(friendshipReady(store.getState()), false)
+  assert.match(transferProblem(store.getState(), first.id, 'nursery')!, /already there/)
+
+  const filler = Array.from({ length: NURSERY_CAPACITY }, (_, i) => ({ ...third, id: `filler-${i}`, habitat: 'nursery' as const }))
+  store.setState((s) => ({ ownedFish: [...s.ownedFish, ...filler] }))
+  assert.match(transferProblem(store.getState(), third.id, 'nursery')!, /nursery is full \(\d+\/\d+\)\. Eggs keep their spot/)
+  assert.equal(store.getState().transferFish(third.id, 'nursery'), false)
+})
+
+test('"new" badges count shop unlocks and hatchlings since the last look, and old saves start caught up', () => {
+  assert.equal(newShopCount(store.getState().seen.shopLevel, levelFromXp(store.getState().xp).level), 0)
+  store.getState().grantXp(5000)
+  const level = levelFromXp(store.getState().xp).level
+  const shopItems = [
+    ...FISH_CATALOG, ...DECORATION_CATALOG, ...BACKGROUND_CATALOG, ...SUBSTRATE_CATALOG,
+    ...FOOD_CATALOG.filter((d) => !d.unlimited), ...STAND_CATALOG, ...TOOL_CATALOG,
+  ]
+  const expected = shopItems.filter((d) => d.unlockLevel > 1 && d.unlockLevel <= level).length
+  assert.ok(expected > 0)
+  assert.equal(newShopCount(store.getState().seen.shopLevel, level), expected)
+  assert.ok(firstNewShopCategory(store.getState().seen.shopLevel, level))
+  store.getState().markShopSeen()
+  assert.equal(newShopCount(store.getState().seen.shopLevel, level), 0)
+  assert.equal(JSON.parse(storage.get('aquarium-save')!).state.seen.shopLevel, level)
+
+  // Saves from before the badges don't light up the whole shop.
+  const { seen: _seen, ...legacy } = JSON.parse(storage.get('aquarium-save')!).state
+  assert.equal(migrate({ ...legacy, xp: 5000 }, 6).seen.shopLevel, levelFromXp(5000).level)
+
+  const parent = store.getState().ownedFish[0]
+  const baby: FishInstance = { ...parent, id: 'new-baby', habitat: 'nursery', bornAt: Date.now() + 1000,
+    inheritance: { bodyParentName: 'A', colorParentName: 'B', bodyParentId: 'a', colorParentId: 'b', color: '#fff', color2: '#000' } }
+  store.setState((s) => ({ ownedFish: [...s.ownedFish, baby], fishVitals: { ...s.fishVitals, [baby.id]: freshVitals() } }))
+  assert.equal(newHatchlings(store.getState()), 1)
+  store.setState((s) => ({ seen: { ...s.seen, nurseryAt: baby.bornAt } }))
+  assert.equal(newHatchlings(store.getState()), 0)
+})
+
+test('every game field is saved, and nothing else', () => {
+  store.getState().renameAquarium('Saved Tank')
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  assert.deepEqual(Object.keys(saved).sort(), Object.keys(createInitialState()).sort())
+})
+
+test('fishpedia rewards group a big batch of discoveries into one message', () => {
+  const fresh = FISH_CATALOG.slice(0, 4).map((def, i): FishInstance => ({
+    id: `pedia-${i}`, defId: def.id, name: `Pedia ${i}`, bornAt: Date.now(), habitat: 'main', sizeScale: 1,
+  }))
+  const found = recordFish({}, fresh, false)
+  const reward = discoveryRewards({}, found)
+  assert.equal(reward.news, 4)
+  assert.equal(reward.xp, fresh.reduce((n, f) => n + DISCOVERY_XP[getFishDef(f.defId)!.rarity], 0))
+  assert.equal(reward.toasts.length, 1)
+  assert.match(reward.toasts[0].text, /4 new Fishpedia entries/)
 })

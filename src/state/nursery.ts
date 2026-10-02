@@ -1,6 +1,9 @@
-import { getFishDef } from '../scene/fish/fishDefinitions'
+import { getFishDef, sampleFishSize } from '../scene/fish/fishDefinitions'
 import { morphedDefinition, rollMorph } from './morphs'
-import type { FishInstance, NurseryEgg } from './types'
+import { NURSERY_CAPACITY } from './economy'
+import { pickFishName } from './names'
+import { freshVitals } from './migrations'
+import type { FishInstance, GameState, NurseryEgg } from './types'
 
 /** Body/species from one parent, actual colors from the other, including later generations. */
 export function inheritedDefinition(fish: Pick<FishInstance, 'defId' | 'inheritance'>) {
@@ -64,4 +67,72 @@ export function getEggHatchRange(defId: string): [number, number] {
 export function sampleEggHatchSeconds(defId: string): number {
   const [min, max] = getEggHatchRange(defId)
   return min + Math.floor(Math.random() * (max - min + 1))
+}
+
+export type NurseryProgress = Pick<GameState, 'nurserySession' | 'nurseryEggs' | 'ownedFish' | 'fishVitals'> & {
+  eggCreated: boolean
+  hatched: FishInstance[]
+}
+
+/**
+ * Run the nursery forward by `seconds`: a friendship ends (or lays its
+ * clutch), eggs count down, and any that are due hatch into little fish.
+ * Pure: takes a state and returns the parts that changed.
+ */
+export function progressNursery(s: GameState, seconds: number): NurseryProgress {
+  const session = s.nurserySession
+  const occupied = s.ownedFish.filter((f) => f.habitat === 'nursery').length + s.nurseryEggs.length
+  let nextSession = session
+  let eggCreated = false
+  const eggs: NurseryEgg[] = s.nurseryEggs.map((egg) => ({ ...egg, remainingSeconds: egg.remainingSeconds - seconds }))
+  if (session) {
+    const parents = session.parentIds.map((id) => s.ownedFish.find((f) => f.id === id))
+    if (parents.some((f) => !f || f.habitat !== 'nursery' || (s.fishVitals[f.id]?.growth ?? 0) < 1)
+      || occupied + session.eggCount > NURSERY_CAPACITY) {
+      nextSession = null
+    } else if (session.remainingSeconds > seconds) {
+      nextSession = { ...session, remainingSeconds: session.remainingSeconds - seconds }
+    } else {
+      const leftover = Math.max(0, seconds - session.remainingSeconds)
+      for (let i = 0; i < session.eggCount; i++) {
+        const egg = createNurseryEgg(parents[0]!, parents[1]!, Date.now() - leftover * 1000)
+        eggs.push({ ...egg, remainingSeconds: egg.hatchSeconds - leftover })
+      }
+      nextSession = null
+      eggCreated = true
+    }
+  }
+  const hatchedEggs = eggs.filter((egg) => egg.remainingSeconds <= 0)
+  // Keep array identity when nothing hatched: the 3D scene re-renders on
+  // ownedFish changes, and rebuilding it every tick caused black-frame flicker.
+  if (hatchedEggs.length === 0) {
+    return {
+      nurserySession: nextSession,
+      nurseryEggs: eggs.length === 0 && s.nurseryEggs.length === 0 ? s.nurseryEggs : eggs,
+      ownedFish: s.ownedFish,
+      fishVitals: s.fishVitals,
+      eggCreated,
+      hatched: [],
+    }
+  }
+  const ownedFish = [...s.ownedFish]
+  const fishVitals = { ...s.fishVitals }
+  const hatched: FishInstance[] = []
+  for (const egg of hatchedEggs) {
+    const id = crypto.randomUUID()
+    const name = pickFishName(ownedFish.map((f) => f.name))
+    const fish: FishInstance = { id, defId: egg.defId, name, bornAt: Date.now() + egg.remainingSeconds * 1000,
+      habitat: 'nursery', sizeScale: sampleFishSize(egg.defId), inheritance: egg.inheritance }
+    ownedFish.push(fish)
+    hatched.push(fish)
+    fishVitals[id] = freshVitals(0.35)
+  }
+  return {
+    nurserySession: nextSession,
+    nurseryEggs: eggs.filter((egg) => egg.remainingSeconds > 0),
+    ownedFish,
+    fishVitals,
+    eggCreated,
+    hatched,
+  }
 }

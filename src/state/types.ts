@@ -98,6 +98,14 @@ export interface FishInheritance {
   morph?: MorphId
 }
 
+/** What the player has already looked at, so the "new" badges know what's new. */
+export interface SeenMarkers {
+  /** Level the shop was last browsed at; anything unlocked after it is new. */
+  shopLevel: number
+  /** When the nursery was last visited; babies hatched after it are new. */
+  nurseryAt: number
+}
+
 export interface FishpediaEntry {
   /** When the species first joined one of your tanks. */
   discoveredAt: number
@@ -194,4 +202,5 @@ export interface GameState {
   settings: GameSettings
   /** Collection book: every species (and morph) that has ever lived in your tanks. */
   fishpedia: Record<string, FishpediaEntry>
+  seen: SeenMarkers
 }
