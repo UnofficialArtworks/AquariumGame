@@ -1,5 +1,6 @@
 import type { DecorationBonusKind, DecorationInstance } from './types'
 import { getDecorationDef } from '../scene/decorations/decorationDefinitions'
+import { beautyOf } from './beauty'
 
 /** Multipliers derived from the gadget decorations placed in the main tank. */
 export interface ActiveBonuses {
@@ -7,7 +8,7 @@ export interface ActiveBonuses {
   algaeRate: number
   /** Multiplies how fast the water turns murky. */
   murkRate: number
-  /** Multiplies how often content fish release coin bubbles. */
+  /** Multiplies how often content fish release coin bubbles (gadgets and the tank's beauty stars). */
   coinRate: number
   /** Multiplies growth gained per meal. */
   growthRate: number
@@ -31,7 +32,7 @@ export function bonusesFor(placed: DecorationInstance[]): ActiveBonuses {
   cacheValue = {
     algaeRate: 1 - (best.algae ?? 0),
     murkRate: 1 - (best.murk ?? 0),
-    coinRate: 1 + (best.coins ?? 0),
+    coinRate: (1 + (best.coins ?? 0)) * (1 + beautyOf(placed).coinBonus),
     growthRate: 1 + (best.growth ?? 0),
     autoFeeder: (best.feeder ?? 0) > 0,
   }

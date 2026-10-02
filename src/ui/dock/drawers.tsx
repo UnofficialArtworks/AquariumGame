@@ -30,6 +30,8 @@ import { ShopItemCard } from '../ShopItemCard'
 import { ItemThumbnail } from '../ItemThumbnail'
 import { Button } from '../components/Button'
 import { Coin, Glyph } from '../Coin'
+import { savePhoto } from '../photo'
+import { beautyOf, STAR_SCORES, STYLES, styleIcons } from '../../state/beauty'
 
 // --- shared bits --------------------------------------------------------------
 
@@ -258,7 +260,14 @@ export function WatchDrawer() {
   if (activeTank === 'nursery') return <NurseryContent />
   return (
     <>
-      <DrawerHead title={`Your fish · ${count}`} hint="Tap a fish to visit it. Tap one in the tank to say hi!" />
+      <DrawerHead title={`Your fish · ${count}`} hint="Tap a fish to visit it. Tap one in the tank to say hi!">
+        <Button onClick={savePhoto} title="Save a photo of your aquarium">
+          📸 Photo
+        </Button>
+        <Button onClick={() => useUIStore.getState().setRelax(true)} title="Hide the buttons and let the camera wander">
+          😌 Relax
+        </Button>
+      </DrawerHead>
       <FishGrid habitat="main" />
       <p className="save-note">Progress saves automatically in this browser.</p>
     </>
@@ -458,6 +467,7 @@ export function DecorateDrawer() {
       <DrawerHead title="Decorate" hint="Tap an item to add it, then drag it into place. Tap placed items to move them.">
         <span className="chip">{placed.length} placed</span>
       </DrawerHead>
+      <BeautyPanel />
       <div className="tile-row tile-row-wrap">
         {unlocked.map((def) => {
           const active = def.bonus && placed.some((p) => p.defId === def.id)
@@ -470,6 +480,7 @@ export function DecorateDrawer() {
             >
               <ItemThumbnail previewKey={def.id} color={def.color} className="tile-thumb" />
               <strong>{def.name}</strong>
+              {styleIcons(def) && <small className="style-icons">{styleIcons(def)}</small>}
               {def.bonus && <small className={`gadget-note ${active ? 'is-on' : ''}`}>{active ? '✓ ' : '✨ '}{def.bonus.label}</small>}
             </button>
           )
@@ -480,6 +491,42 @@ export function DecorateDrawer() {
         </button>
       </div>
     </>
+  )
+}
+
+/** The tank's beauty stars and how close each style set is to its next bonus. */
+function BeautyPanel() {
+  const placed = useGameStore((s) => s.placedDecorations)
+  const beauty = beautyOf(placed)
+  const nextStars = STAR_SCORES[beauty.stars]
+  return (
+    <div className="beauty-panel">
+      <div className="beauty-score" title={nextStars ? `${nextStars - beauty.score} more beauty for the next star` : 'Top beauty!'}>
+        <span className="beauty-stars" aria-label={`${beauty.stars} of 5 stars`}>
+          {'★'.repeat(beauty.stars)}
+          <i>{'★'.repeat(5 - beauty.stars)}</i>
+        </span>
+        <strong>Beauty {beauty.score}</strong>
+        <small>{beauty.coinBonus > 0 ? `Coin bubbles +${Math.round(beauty.coinBonus * 100)}%` : 'Decorate to earn stars'}</small>
+      </div>
+      {beauty.sets.length > 0 && (
+        <div className="style-sets">
+          {beauty.sets.map((set) => (
+            <span
+              key={set.style}
+              className={`style-set tier-${set.tier}`}
+              title={set.next ? `${set.next - set.count} more different ${STYLES[set.style].name} pieces for a bigger set bonus` : 'Biggest set bonus!'}
+            >
+              {STYLES[set.style].icon} {STYLES[set.style].name}{' '}
+              <b>
+                {set.count}
+                {set.next ? `/${set.next}` : ''}
+              </b>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -597,6 +644,7 @@ export function ShopDrawer() {
               cost={def.cost}
               rarity={def.rarity}
               badge={def.bonus?.label}
+              styles={styleIcons(def)}
               {...card('decorations', def.id, def.name, def.unlockLevel)}
               owned={unlockedDecorationDefIds.includes(def.id)}
               onBuy={() => {

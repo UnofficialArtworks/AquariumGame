@@ -11,11 +11,13 @@ import { bonusesFor } from '../state/bonuses'
 import { setSoundEnabled, unlockAudio } from '../audio/sfx'
 import { setMusicEnabled, setMusicMood } from '../audio/music'
 import { PhotoCapture, useAdaptiveDpr } from '../scene/RenderBudget'
+import { RelaxOverlay } from '../ui/RelaxOverlay'
 
 export function GameRoot() {
   const sound = useGameStore((s) => s.settings.sound)
   const music = useGameStore((s) => s.settings.music)
   const scrubbing = useUIStore((s) => s.mode === 'clean' && s.cleanTool === 'sponge' && s.toolActive)
+  const relax = useUIStore((s) => s.relax)
   const { dpr, monitor } = useAdaptiveDpr()
 
   useEffect(() => {
@@ -23,7 +25,10 @@ export function GameRoot() {
     const interval = setInterval(() => {
       const s = useGameStore.getState()
       s.tick()
-      useUIStore.getState().syncClock()
+      s.refreshGoals()
+      const ui = useUIStore.getState()
+      ui.syncClock()
+      if (ui.relax && !document.hidden) s.noteStat('relaxSeconds')
       growAlgae(1, s.murk, bonusesFor(s.placedDecorations).algaeRate)
       ticks++
       if (ticks % 10 === 0) saveAlgae()
@@ -55,7 +60,7 @@ export function GameRoot() {
   }, [])
 
   return (
-    <div className="game-root" data-scrubbing={scrubbing}>
+    <div className="game-root" data-scrubbing={scrubbing} data-relax={relax}>
       <Canvas
         className="tank-canvas"
         shadows={{ type: PCFShadowMap }}
@@ -69,6 +74,7 @@ export function GameRoot() {
       <ItemPreviewGenerator />
       <HUD />
       {scrubbing && <div className="scrub-hint">Release to show controls</div>}
+      {relax && <RelaxOverlay />}
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import type { DailyWishes } from './goals'
 export type StyleTag = 'neutral' | 'adventure' | 'sparkle' | 'nature' | 'classic' | 'scifi'
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
@@ -166,6 +167,15 @@ export interface GameStats {
   waterChanges: number
   coinsCollected: number
   fishBought: number
+  /** Coin bubbles tapped (not ones that floated away). */
+  bubblesPopped: number
+  photos: number
+  decorPlaced: number
+  /** Taps on fish to say hi. */
+  fishGreeted: number
+  friendships: number
+  hatched: number
+  relaxSeconds: number
 }
 
 export interface GameSettings {
@@ -204,4 +214,7 @@ export interface GameState {
   /** Collection book: every species (and morph) that has ever lived in your tanks. */
   fishpedia: Record<string, FishpediaEntry>
   seen: SeenMarkers
+  daily: DailyWishes
+  /** Trophy id → when it was earned (ms). */
+  trophies: Record<string, number>
 }

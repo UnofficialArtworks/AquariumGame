@@ -34,9 +34,11 @@ import { algaeCoverage } from '../sim/algae'
 import { progressNursery, sampleEggCount } from './nursery'
 import { checkPurchase, friendshipProblem, purchaseXp, transferProblem, type ShopCategory } from './rules'
 import { bonusesFor } from './bonuses'
+import { beautyOf } from './beauty'
 import { STAND_CATALOG } from '../scene/stands/standDefinitions'
 import { discoveryRewards, recordFish } from './fishpedia'
 import { getToolDef } from '../scene/cleaning/toolDefinitions'
+import { bonusReward, dayKey, getWishTemplate, newTrophies, rollWishes, wishDone, wishReward, type StatKey } from './goals'
 
 /** Hunger the auto-feeder keeps fish under while the player is away. */
 const AUTO_FEEDER_HUNGER_CAP = 0.45
@@ -84,6 +86,12 @@ interface GameActions {
   markShopSeen: () => void
   /** The player looked in the nursery: its hatchlings are no longer "new". */
   markNurserySeen: () => void
+  /** Count something the player did (for wishes and trophies). */
+  noteStat: (key: StatKey, amount?: number) => void
+  /** New day? New wishes. New trophies? Hand them out. Runs every second. */
+  refreshGoals: () => void
+  claimWish: (id: string) => boolean
+  claimWishBonus: () => boolean
 }
 
 export type GameStore = GameState & GameActions
@@ -169,6 +177,7 @@ export const useGameStore = create<GameStore>()(
           const { eggCreated, hatched, ...nursery } = progressNursery({ ...s, fishVitals: vitals }, 1)
           set({ currency: s.currency + whole, lastTickTimestamp: Date.now(), murk, ...nursery })
           if (hatched.length) {
+            get().noteStat('hatched', hatched.length)
             hatchToast(hatched.length)
             get().noteFish(hatched, true)
           } else if (eggCreated) useUIStore.getState().pushToast('New eggs are cozy in the nursery!', 'success', '🥚')
@@ -212,6 +221,7 @@ export const useGameStore = create<GameStore>()(
           const { eggCreated, hatched, ...nursery } = progressNursery({ ...s, fishVitals: vitals }, elapsed)
           set({ currency: s.currency + earned, lastTickTimestamp: now, murk, ...nursery })
           if (hatched.length) {
+            get().noteStat('hatched', hatched.length)
             hatchToast(hatched.length)
             get().noteFish(hatched, true)
           } else if (eggCreated) useUIStore.getState().pushToast('New eggs are cozy in the nursery!', 'success', '🥚')
@@ -259,7 +269,7 @@ export const useGameStore = create<GameStore>()(
           const s = get()
           set({
             currency: s.currency + amount,
-            stats: { ...s.stats, coinsCollected: s.stats.coinsCollected + amount },
+            stats: { ...s.stats, coinsCollected: s.stats.coinsCollected + amount, bubblesPopped: s.stats.bubblesPopped + (clicked ? 1 : 0) },
           })
           if (clicked) get().grantXp(1)
         },
@@ -401,6 +411,7 @@ export const useGameStore = create<GameStore>()(
           const first = s.ownedFish.find((f) => f.id === firstId)!
           set({ nurserySession: { parentIds: [firstId, secondId], remainingSeconds: FRIENDSHIP_SECONDS,
             eggCount: sampleEggCount(first.defId) } })
+          get().noteStat('friendships')
           return true
         },
 
@@ -416,7 +427,16 @@ export const useGameStore = create<GameStore>()(
           const def = getDecorationDef(defId)
           const [x, z] = clampToInterior((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 1.6, def?.footprintRadius ?? 0.3)
           const instance: DecorationInstance = { id: crypto.randomUUID(), defId, position: [x, 0, z], rotationY: Math.random() * Math.PI * 2 }
-          set({ placedDecorations: [...s.placedDecorations, instance] })
+          set({ placedDecorations: [...s.placedDecorations, instance], stats: { ...s.stats, decorPlaced: s.stats.decorPlaced + 1 } })
+          const before = beautyOf(s.placedDecorations).stars
+          const after = beautyOf(get().placedDecorations)
+          if (after.stars > before) {
+            useUIStore.getState().pushToast(
+              `Your tank is now ${'★'.repeat(after.stars)} beautiful! Coin bubbles +${Math.round(after.coinBonus * 100)}%`,
+              'reward',
+              '✨',
+            )
+          }
           useUIStore.getState().setSelectedDecorationId(instance.id)
         },
 
@@ -519,6 +539,57 @@ export const useGameStore = create<GameStore>()(
         },
 
         markNurserySeen: () => set((s) => ({ seen: { ...s.seen, nurseryAt: Date.now() } })),
+
+        noteStat: (key, amount = 1) => set((s) => ({ stats: { ...s.stats, [key]: (s.stats[key] ?? 0) + amount } })),
+
+        refreshGoals: () => {
+          const s = get()
+          const today = dayKey()
+          if (s.daily.day !== today) {
+            // Finished but unclaimed wishes from an earlier day still pay out.
+            const level = levelFromXp(s.xp).level
+            const done = s.daily.wishes.filter((w) => !w.claimed && wishDone(s, w)).length
+            const reward = wishReward(level)
+            set({ daily: rollWishes(s, today), currency: s.currency + done * reward.coins })
+            if (done) {
+              get().grantXp(done * reward.xp)
+              useUIStore.getState().pushToast(`Wishes you finished last time paid out: +${done * reward.coins} coins`, 'reward', '🪙')
+            }
+          }
+          const won = newTrophies(get())
+          if (won.length === 0) return
+          const coins = won.reduce((n, t) => n + t.coins, 0)
+          const now = Date.now()
+          set((g) => ({ trophies: { ...g.trophies, ...Object.fromEntries(won.map((t) => [t.id, now])) }, currency: g.currency + coins }))
+          const ui = useUIStore.getState()
+          if (won.length <= 2) for (const t of won) ui.pushToast(`Trophy earned: ${t.name}! +${t.coins} coins`, 'reward', t.icon)
+          else ui.pushToast(`You earned ${won.length} trophies! +${coins.toLocaleString()} coins`, 'reward', '🏆')
+          ui.bumpGoalsNews(won.length)
+        },
+
+        claimWish: (id) => {
+          const s = get()
+          const wish = s.daily.wishes.find((w) => w.id === id)
+          if (!wish || wish.claimed || !wishDone(s, wish)) return false
+          const reward = wishReward(levelFromXp(s.xp).level)
+          set({
+            daily: { ...s.daily, wishes: s.daily.wishes.map((w) => (w.id === id ? { ...w, claimed: true } : w)) },
+            currency: s.currency + reward.coins,
+          })
+          get().grantXp(reward.xp)
+          useUIStore.getState().pushToast(`Wish granted! +${reward.coins} coins`, 'reward', getWishTemplate(id)?.icon ?? '⭐')
+          return true
+        },
+
+        claimWishBonus: () => {
+          const s = get()
+          if (s.daily.bonusClaimed || s.daily.wishes.length === 0 || !s.daily.wishes.every((w) => w.claimed)) return false
+          const reward = bonusReward(levelFromXp(s.xp).level)
+          set({ daily: { ...s.daily, bonusClaimed: true }, currency: s.currency + reward.coins })
+          get().grantXp(reward.xp)
+          useUIStore.getState().pushToast(`All of today's wishes came true! +${reward.coins} coins`, 'reward', '🎁')
+          return true
+        },
       }
     },
     {

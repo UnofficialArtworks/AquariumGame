@@ -749,3 +749,95 @@ test('tank lights follow the real clock, and the player can override until the n
   // The game re-checks every second, so the cleared pick doesn't come back next morning.
   assert.deepEqual(nightLevel(evening.override, at(9)), { level: 0, override: null })
 })
+
+test('beauty rewards variety and style sets, and its stars speed up coin bubbles', async () => {
+  const { beautyOf, SET_TIERS } = await import('../src/state/beauty')
+  const { bonusesFor } = await import('../src/state/bonuses')
+  const place = (ids: string[]) => ids.map((defId, i) => ({ id: `d${i}`, defId, position: [0, 0, 0] as [number, number, number], rotationY: 0 }))
+  const nature = DECORATION_CATALOG.filter((d) => d.styleTags.includes('nature'))
+  const one = nature[0].id
+  // Ten copies of one thing score far less than ten different things.
+  const copies = beautyOf(place(Array(10).fill(one)))
+  const variety = beautyOf(place(nature.slice(0, 10).map((d) => d.id)))
+  assert.ok(variety.score > copies.score * 3)
+  assert.equal(copies.sets.find((s) => s.style === 'nature')?.count, 1)
+  // Three different nature pieces make a set; eight make the biggest one.
+  const set3 = beautyOf(place(nature.slice(0, 3).map((d) => d.id))).sets.find((s) => s.style === 'nature')!
+  assert.equal(set3.tier, 1)
+  assert.equal(set3.next, SET_TIERS[1].count)
+  assert.ok(nature.length >= 8)
+  assert.equal(beautyOf(place(nature.slice(0, 8).map((d) => d.id))).sets.find((s) => s.style === 'nature')!.tier, 3)
+  // Stars feed the coin-bubble rate.
+  const lots = place(DECORATION_CATALOG.filter((d) => !d.bonus).map((d) => d.id))
+  const beauty = beautyOf(lots)
+  assert.equal(beauty.stars, 5)
+  assert.ok(Math.abs(bonusesFor(lots).coinRate - (1 + beauty.coinBonus)) < 1e-9)
+  assert.equal(beautyOf([]).stars, 0)
+})
+
+test('daily wishes: three a day, progress counts from when they were given, and claims pay once', async () => {
+  const { rollWishes, wishProgress, claimableCount, wishReward, dayKey } = await import('../src/state/goals')
+  const s = store.getState()
+  const a = rollWishes(s, '2026-10-02')
+  assert.deepEqual(rollWishes(s, '2026-10-02'), a)
+  assert.equal(a.wishes.length, 3)
+  assert.equal(new Set(a.wishes.map((w) => w.id)).size, 3)
+
+  store.getState().refreshGoals()
+  const daily = store.getState().daily
+  assert.equal(daily.day, dayKey())
+  const wish = daily.wishes[0]
+  assert.equal(wishProgress(store.getState(), wish), 0)
+  assert.equal(store.getState().claimWish(wish.id), false)
+  store.getState().noteStat(wish.stat, wish.target)
+  assert.equal(claimableCount(store.getState()), 1)
+  const coins = store.getState().currency
+  assert.equal(store.getState().claimWish(wish.id), true)
+  assert.equal(store.getState().currency, coins + wishReward(levelFromXp(store.getState().xp).level).coins)
+  assert.equal(store.getState().claimWish(wish.id), false)
+  // Finish the rest, then the bonus.
+  for (const w of store.getState().daily.wishes.slice(1)) {
+    store.getState().noteStat(w.stat, w.target)
+    assert.ok(store.getState().claimWish(w.id))
+  }
+  assert.equal(claimableCount(store.getState()), 1)
+  assert.ok(store.getState().claimWishBonus())
+  assert.equal(store.getState().claimWishBonus(), false)
+  assert.equal(claimableCount(store.getState()), 0)
+
+  // A new day: finished-but-unclaimed wishes still pay, then fresh ones arrive.
+  const old = rollWishes(store.getState(), '2000-01-01')
+  store.setState({ daily: old })
+  store.getState().noteStat(old.wishes[0].stat, old.wishes[0].target)
+  const before = store.getState().currency
+  store.getState().refreshGoals()
+  assert.equal(store.getState().daily.day, dayKey())
+  assert.ok(store.getState().currency >= before + wishReward(levelFromXp(store.getState().xp).level).coins)
+  assert.ok(store.getState().daily.wishes.every((w) => !w.claimed))
+})
+
+test('trophies pay out once when reached, and saved goals survive a reload', async () => {
+  const { TROPHIES } = await import('../src/state/goals')
+  store.getState().refreshGoals()
+  assert.equal(store.getState().trophies['bubbles'], undefined)
+  store.getState().noteStat('bubblesPopped', 50)
+  const coins = store.getState().currency
+  store.getState().refreshGoals()
+  assert.ok(store.getState().trophies['bubbles'])
+  const prize = TROPHIES.find((t) => t.id === 'bubbles')!.coins
+  assert.ok(store.getState().currency >= coins + prize)
+  const after = store.getState().currency
+  store.getState().refreshGoals()
+  assert.equal(store.getState().currency, after)
+
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  const restored = migrate({ ...saved }, 6)
+  assert.ok(restored.trophies['bubbles'])
+  assert.equal(restored.daily.day, saved.daily.day)
+  // Old saves without goals start clean, and nonsense is dropped.
+  const { daily: _d, trophies: _t, ...legacy } = saved
+  const fresh = migrate(legacy, 6)
+  assert.deepEqual(fresh.trophies, {})
+  assert.equal(fresh.daily.wishes.length, 0)
+  assert.equal(migrate({ ...saved, daily: { day: 5, wishes: 'x' } }, 6).daily.wishes.length, 0)
+})

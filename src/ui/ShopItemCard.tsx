@@ -23,13 +23,15 @@ interface ShopItemCardProps {
   unavailableText?: string
   /** Highlighted perk line, e.g. a gadget bonus or a tool's stats. */
   badge?: string
+  /** Style set icons (decorations), e.g. 🌿✨. */
+  styles?: string
   /** Unlocked since the player last browsed the shop. */
   isNew?: boolean
   /** Why it can't be bought yet: tapping the greyed-out button explains. */
   whyNot?: { text: string; icon: string }
 }
 
-export function ShopItemCard({ previewKey, name, description, color, swatch, icon, cost, owned, equipped, affordable, unlockLevel, rarity, onBuy, onEquip, countOwned, packSize, unavailableText, badge, isNew, whyNot }: ShopItemCardProps) {
+export function ShopItemCard({ previewKey, name, description, color, swatch, icon, cost, owned, equipped, affordable, unlockLevel, rarity, onBuy, onEquip, countOwned, packSize, unavailableText, badge, styles, isNew, whyNot }: ShopItemCardProps) {
   const locked = unlockLevel !== undefined
   const canAct = !locked && (owned ? Boolean(onEquip) && !equipped : affordable)
   // A blocked button stays tappable on touch screens so it can say why.
@@ -49,7 +51,14 @@ export function ShopItemCard({ previewKey, name, description, color, swatch, ico
         {isNew && <span className="shop-new">New</span>}
       </div>
       <div className="shop-copy">
-        <strong>{name}</strong>
+        <strong>
+          {name}
+          {styles && (
+            <span className="shop-styles" title="Style sets">
+              {styles}
+            </span>
+          )}
+        </strong>
         {badge && <span className="shop-badge">✨ {badge}</span>}
         <p>{description}</p>
       </div>

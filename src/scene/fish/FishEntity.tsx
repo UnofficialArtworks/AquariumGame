@@ -114,6 +114,7 @@ export function CreatureOverlay({
     const selecting = ui.selectedFishId !== fishId
     ui.selectFish(selecting ? fishId : null)
     sfx.click()
+    if (selecting) useGameStore.getState().noteStat('fishGreeted')
     // Say hi: a happy shimmy and a look at the player.
     if (selecting && agentRef.current && !agentRef.current.sleeping) agentRef.current.wiggle = 1.1
   }

@@ -2578,3 +2578,330 @@ button:disabled {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+/* --- relax mode: the tank on its own --------------------------------------------- */
+
+.hud {
+  transition: opacity 0.6s ease;
+}
+
+.game-root[data-relax='true'] .hud {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.game-root[data-relax='true'] .hud * {
+  pointer-events: none !important;
+}
+
+.relax-catcher {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.relax-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(28px + var(--safe-bottom));
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-weight: 800;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  animation: relax-hint 4.5s ease forwards;
+}
+
+@keyframes relax-hint {
+  0%,
+  10% {
+    opacity: 0;
+  }
+  20%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* --- goals: daily wishes and trophies ------------------------------------------------ */
+
+.goals-tabs {
+  margin-bottom: 12px;
+}
+
+.goals-note {
+  margin: 0 0 12px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.wish-list {
+  display: grid;
+  gap: 10px;
+}
+
+.wish,
+.wish-bonus {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.wish.is-done:not(.is-claimed) {
+  border-color: rgba(79, 227, 208, 0.55);
+  background: rgba(79, 227, 208, 0.1);
+  box-shadow: 0 0 0 3px rgba(79, 227, 208, 0.12);
+}
+
+.wish.is-claimed {
+  opacity: 0.6;
+}
+
+.wish-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 1.3rem;
+}
+
+.wish-copy {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.wish-copy strong {
+  font-size: 0.95rem;
+}
+
+.wish-copy small {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.wish-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wish-progress small {
+  flex: none;
+  color: var(--ink-soft);
+  font-weight: 800;
+  font-size: 0.78rem;
+}
+
+.goal-bar {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.goal-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--aqua-deep), var(--aqua));
+  transition: width 0.4s ease;
+}
+
+.wish-claimed,
+.trophy-done {
+  flex: none;
+  color: var(--good);
+  font-weight: 900;
+  font-size: 0.85rem;
+}
+
+.wish .btn,
+.wish-bonus .btn {
+  flex: none;
+  white-space: nowrap;
+}
+
+.wish-bonus {
+  margin-top: 12px;
+  border-style: dashed;
+}
+
+.wish-bonus.is-ready {
+  border-style: solid;
+  border-color: rgba(255, 209, 102, 0.6);
+  background: rgba(255, 209, 102, 0.1);
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+.trophy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.trophy {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  text-align: center;
+}
+
+.trophy-icon {
+  font-size: 1.8rem;
+  filter: grayscale(1) opacity(0.45);
+}
+
+.trophy strong {
+  font-size: 0.88rem;
+}
+
+.trophy > small {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.trophy.is-earned {
+  border-color: rgba(255, 209, 102, 0.45);
+  background: linear-gradient(180deg, rgba(255, 209, 102, 0.12), rgba(255, 209, 102, 0.03));
+}
+
+.trophy.is-earned .trophy-icon {
+  filter: drop-shadow(0 3px 8px rgba(255, 190, 60, 0.45));
+}
+
+.trophy .wish-progress {
+  margin-top: 4px;
+}
+
+@media (max-width: 520px) {
+  .wish,
+  .wish-bonus {
+    flex-wrap: wrap;
+  }
+  .wish-copy {
+    flex: 1 1 calc(100% - 60px);
+  }
+  .wish .btn,
+  .wish-bonus .btn,
+  .wish-claimed {
+    margin-left: 54px;
+  }
+  .trophy-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Phones: the photo button lives in the Watch drawer instead. */
+@media (max-width: 520px) {
+  .icon-btn.photo-btn {
+    display: none;
+  }
+}
+
+/* --- beauty and style sets ----------------------------------------------------------- */
+
+.beauty-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.beauty-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.beauty-stars {
+  color: var(--sun);
+  font-size: 1.05rem;
+  letter-spacing: 1px;
+  text-shadow: 0 0 10px rgba(255, 209, 102, 0.45);
+}
+
+.beauty-stars i {
+  font-style: normal;
+  color: rgba(255, 255, 255, 0.18);
+  text-shadow: none;
+}
+
+.beauty-score small {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.style-sets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.style-set {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+
+.style-set b {
+  color: var(--ink);
+}
+
+.style-set.tier-1 {
+  border-color: rgba(79, 227, 208, 0.45);
+}
+
+.style-set.tier-2 {
+  border-color: rgba(79, 227, 208, 0.7);
+  background: rgba(79, 227, 208, 0.1);
+}
+
+.style-set.tier-3 {
+  border-color: rgba(255, 209, 102, 0.7);
+  background: rgba(255, 209, 102, 0.12);
+}
+
+.style-icons {
+  font-size: 0.72rem;
+  letter-spacing: 1px;
+}
+
+.shop-styles {
+  margin-left: 6px;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+}

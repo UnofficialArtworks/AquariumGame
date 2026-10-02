@@ -11,6 +11,7 @@ import { NURSERY_CAPACITY } from './economy'
 import { recordFish, sanitizeFishpedia, type Fishpedia } from './fishpedia'
 import { getMorph } from './morphs'
 import { levelFromXp } from './progression'
+import { NO_WISHES, type DailyWishes } from './goals'
 
 export const CURRENT_SAVE_VERSION = 6
 
@@ -87,10 +88,19 @@ export function createInitialState(): GameState {
       waterChanges: 0,
       coinsCollected: 0,
       fishBought: 0,
+      bubblesPopped: 0,
+      photos: 0,
+      decorPlaced: 0,
+      fishGreeted: 0,
+      friendships: 0,
+      hatched: 0,
+      relaxSeconds: 0,
     },
     settings: { sound: true, music: true },
     fishpedia: backfillFishpedia({}, ownedFish),
     seen: { shopLevel: 1, nurseryAt: now },
+    daily: NO_WISHES,
+    trophies: {},
   }
 }
 
@@ -157,6 +167,10 @@ export function sanitize(state: Partial<GameState>): GameState {
     shopLevel: Number.isFinite(seen?.shopLevel) ? Math.max(1, Math.min(level, seen!.shopLevel)) : level,
     nurseryAt: Number.isFinite(seen?.nurseryAt) ? seen!.nurseryAt : Date.now(),
   }
+  merged.daily = sanitizeDaily(state.daily, merged.stats)
+  merged.trophies = Object.fromEntries(
+    Object.entries(state.trophies && typeof state.trophies === 'object' ? state.trophies : {}).filter(([, at]) => Number.isFinite(at)),
+  )
   for (const f of merged.ownedFish) {
     if (!merged.fishVitals[f.id]) merged.fishVitals = { ...merged.fishVitals, [f.id]: freshVitals(0.4) }
   }
@@ -210,4 +224,14 @@ export function migrate(persistedState: unknown, fromVersion: number): GameState
     console.warn('Save migration failed, starting a fresh save.', error)
     return createInitialState()
   }
+}
+
+/** Keep today's wishes if they look right; anything odd just means new wishes get rolled. */
+function sanitizeDaily(raw: unknown, stats: GameState['stats']): DailyWishes {
+  const d = raw as Partial<DailyWishes> | undefined
+  if (!d || typeof d.day !== 'string' || !Array.isArray(d.wishes)) return NO_WISHES
+  const wishes = d.wishes.filter(
+    (w) => w && typeof w.id === 'string' && w.stat in stats && Number.isFinite(w.target) && w.target > 0 && Number.isFinite(w.base),
+  )
+  return { day: d.day, wishes: wishes.map((w) => ({ ...w, claimed: Boolean(w.claimed) })), bonusClaimed: Boolean(d.bonusClaimed) }
 }

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { ShopCategory } from './rules'
 import { nightLevel, type NightOverride } from '../sim/daylight'
 
-export type ModalId = 'shop' | 'help' | 'fishpedia' | null
+export type ModalId = 'shop' | 'help' | 'fishpedia' | 'goals' | null
 /** Shop drawer tabs: one per shop category. */
 export type ShopTab = ShopCategory
 export type AppMode = 'view' | 'feed' | 'clean' | 'decorate'
@@ -43,6 +43,8 @@ interface UIState {
   selectedDecorationId: string | null
   selectedFishId: string | null
   followFish: boolean
+  /** Relax mode: controls hidden, the camera tours the tank on its own. */
+  relax: boolean
   controlsEnabled: boolean
   /** True while the player is dragging a cleaning tool, so the camera stays put. */
   toolActive: boolean
@@ -63,12 +65,15 @@ interface UIState {
   welcomeBack: WelcomeBackInfo | null
   /** New Fishpedia entries/stamps since the book was last opened. */
   fishpediaNews: number
+  /** Trophies earned since the Goals window was last opened. */
+  goalsNews: number
   /** Species the Fishpedia opens on (null = the overview). */
   fishpediaPick: string | null
   setMode: (mode: AppMode) => void
   setDraggingId: (id: string | null) => void
   setSelectedDecorationId: (id: string | null) => void
   selectFish: (id: string | null) => void
+  setRelax: (on: boolean) => void
   setFollowFish: (follow: boolean) => void
   setToolActive: (active: boolean) => void
   openModal: (modal: ModalId) => void
@@ -88,6 +93,8 @@ interface UIState {
   setLevelUp: (info: LevelUpInfo | null) => void
   setWelcomeBack: (info: WelcomeBackInfo | null) => void
   bumpFishpediaNews: (count: number) => void
+  bumpGoalsNews: (count: number) => void
+  openGoals: () => void
   openFishpedia: (defId?: string | null) => void
   setFishpediaPick: (defId: string | null) => void
 }
@@ -110,6 +117,7 @@ export const useUIStore = create<UIState>()((set, get) => ({
   selectedDecorationId: null,
   selectedFishId: null,
   followFish: false,
+  relax: false,
   controlsEnabled: true,
   toolActive: false,
   activeModal: null,
@@ -123,6 +131,7 @@ export const useUIStore = create<UIState>()((set, get) => ({
   levelUp: null,
   welcomeBack: null,
   fishpediaNews: 0,
+  goalsNews: 0,
   fishpediaPick: null,
   setMode: (mode) =>
     set({
@@ -138,6 +147,11 @@ export const useUIStore = create<UIState>()((set, get) => ({
   setSelectedDecorationId: (id) => set({ selectedDecorationId: id }),
   selectFish: (id) => set({ selectedFishId: id, followFish: id === null ? false : get().followFish }),
   setFollowFish: (follow) => set({ followFish: follow }),
+  setRelax: (on) => {
+    if (!on) return set({ relax: false })
+    if (get().mode !== 'view') get().setMode('view')
+    set({ relax: true, trayOpen: false, selectedFishId: null, followFish: false, selectedDecorationId: null })
+  },
   setToolActive: (active) => set({ toolActive: active, controlsEnabled: !active && get().draggingId === null }),
   openModal: (modal) => set({ activeModal: modal }),
   openDock: (tab) => {
@@ -186,5 +200,7 @@ export const useUIStore = create<UIState>()((set, get) => ({
   setWelcomeBack: (info) => set({ welcomeBack: info }),
   bumpFishpediaNews: (count) => set({ fishpediaNews: get().fishpediaNews + count }),
   openFishpedia: (defId = null) => set({ activeModal: 'fishpedia', fishpediaPick: defId, fishpediaNews: 0 }),
+  bumpGoalsNews: (count) => set({ goalsNews: get().goalsNews + count }),
+  openGoals: () => set({ activeModal: 'goals', goalsNews: 0 }),
   setFishpediaPick: (defId) => set({ fishpediaPick: defId }),
 }))

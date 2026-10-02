@@ -5,6 +5,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import * as THREE from 'three'
 import { useUIStore } from '../state/useUIStore'
 import { fishAgents } from '../sim/world'
+import { isCleanupCrew } from './fish/fishDefinitions'
 import { TANK_HEIGHT, TANK_WIDTH } from './TankBounds'
 import { screenInsets } from '../ui/screenInsets'
 
@@ -41,6 +42,8 @@ export function CameraRig() {
   const intro = useRef(0)
   const lastInput = useRef(performance.now())
   const frame = useRef({ shift: 0, zoom: 1 })
+  // Relax mode alternates drifting wide with gliding after one fish for a while.
+  const tour = useRef<{ fishId: string | null; until: number }>({ fishId: null, until: 0 })
   const followTarget = useMemo(() => new THREE.Vector3(), [])
   const delta = useMemo(() => new THREE.Vector3(), [])
 
@@ -86,7 +89,10 @@ export function CameraRig() {
     }
 
     const ui = useUIStore.getState()
-    const followed = ui.followFish && ui.selectedFishId ? fishAgents.get(ui.selectedFishId) : undefined
+    const now = performance.now() / 1000
+    const touring = ui.relax ? tourFish(now) : undefined
+    if (!ui.relax) tour.current.until = 0
+    const followed = ui.followFish && ui.selectedFishId ? fishAgents.get(ui.selectedFishId) : touring
     if (followed) {
       followTarget.copy(followed.object.position)
       delta.copy(followTarget).sub(controls.target).multiplyScalar(1 - Math.exp(-dt * 3))
@@ -102,14 +108,45 @@ export function CameraRig() {
       camera.position.add(delta)
     }
 
+    if (ui.relax && !followed) {
+      // A slow drift: swing side to side, bob up and down, and breathe in and out.
+      const az = controls.getAzimuthalAngle()
+      controls.setAzimuthalAngle(az + (Math.sin(now / 21) * 0.62 - az) * dt * 0.3)
+      const polar = controls.getPolarAngle()
+      controls.setPolarAngle(polar + (1.3 + Math.sin(now / 27) * 0.1 - polar) * dt * 0.3)
+      const dist = camera.position.distanceTo(controls.target)
+      const want = home * (0.92 + Math.sin(now / 33) * 0.07)
+      camera.position.lerp(controls.target, (1 - Math.exp(-dt * 0.4)) * (1 - want / dist))
+    }
+
     const idle = (performance.now() - lastInput.current) / 1000 > IDLE_SECONDS
-    if (idle && ui.mode === 'view' && !ui.activeModal) {
+    if (!ui.relax && idle && ui.mode === 'view' && !ui.activeModal) {
       const az = controls.getAzimuthalAngle()
       const goal = Math.sin(performance.now() / 1000 / 14) * 0.55
       controls.setAzimuthalAngle(az + (goal - az) * dt * 0.25)
     }
     controls.update()
   })
+
+  /** Relax mode's next stop: a random fish (not the cleanup crew) for 10–15 s, then 14–20 s of drifting. */
+  function tourFish(now: number) {
+    const t = tour.current
+    if (t.until === 0) {
+      // Settle in with a drift before the first fish.
+      t.fishId = null
+      t.until = now + 8
+    } else if (now > t.until || (t.fishId && !fishAgents.has(t.fishId))) {
+      const swimmers = [...fishAgents.values()].filter((a) => !isCleanupCrew(a.def))
+      if (t.fishId || swimmers.length === 0) {
+        t.fishId = null
+        t.until = now + 14 + Math.random() * 6
+      } else {
+        t.fishId = swimmers[Math.floor(Math.random() * swimmers.length)].id
+        t.until = now + 10 + Math.random() * 5
+      }
+    }
+    return t.fishId ? fishAgents.get(t.fishId) : undefined
+  }
 
   /**
    * When a dock drawer slides up over the bottom of the screen, nudge the

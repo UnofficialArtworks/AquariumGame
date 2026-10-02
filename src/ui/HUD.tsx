@@ -9,12 +9,14 @@ import { firstNewShopCategory, friendshipReady, newHatchlings, transferProblem }
 import { getMorph, speciesLabel } from '../state/morphs'
 import { getFoodDef } from '../scene/food/foodDefinitions'
 import { algaeCoverage } from '../sim/algae'
-import { requestPhoto } from '../scene/RenderBudget'
+import { savePhoto } from './photo'
 import { Button } from './components/Button'
 import { Coin, CoinText, Glyph } from './Coin'
 import { Modal } from './components/Modal'
 import { Dock } from './dock/Dock'
 import { Fishpedia } from './Fishpedia'
+import { Goals } from './Goals'
+import { claimableCount } from '../state/goals'
 import { screenInsets } from './screenInsets'
 
 /** Open a dock tab and make sure its drawer is showing. */
@@ -213,30 +215,21 @@ function TopActions() {
   const night = useUIStore((s) => s.night)
   const toggleNight = useUIStore((s) => s.toggleNight)
   const news = useUIStore((s) => s.fishpediaNews)
-  const pushToast = useUIStore((s) => s.pushToast)
-  const photo = async () => {
-    const dataUrl = await requestPhoto()
-    if (!dataUrl) {
-      pushToast('Could not save the aquarium photo', 'warn', '📸')
-      return
-    }
-    const link = document.createElement('a')
-    link.href = dataUrl
-    link.download = `my-aquarium-${new Date().toISOString().slice(0, 10)}.png`
-    link.click()
-    pushToast('Aquarium photo saved!', 'success', '📸')
-  }
+  const goals = useGameStore(claimableCount) + useUIStore((s) => s.goalsNews)
   return (
     <div className="icon-group">
       <button className="icon-btn" onClick={() => useUIStore.getState().openFishpedia()} title="Fishpedia: your collection book">
         📖
         {news > 0 && <span className="icon-badge">{news > 9 ? '9+' : news}</span>}
       </button>
+      <button className="icon-btn" onClick={() => useUIStore.getState().openGoals()} title="Goals: today's wishes and your trophies">
+        ⭐{goals > 0 && <span className="icon-badge">{goals > 9 ? '9+' : goals}</span>}
+      </button>
       <button className="icon-btn" onClick={toggleNight} aria-pressed={night} title={night ? 'Lights on (until the clock reaches morning or evening)' : 'Lights down for the night (until the clock reaches morning or evening)'}>
         {night ? '☀️' : '🌙'}
       </button>
       <SoundMenu />
-      <button className="icon-btn" onClick={photo} title="Save a photo of your aquarium">
+      <button className="icon-btn photo-btn" onClick={savePhoto} title="Save a photo of your aquarium">
         📸
       </button>
     </div>
@@ -528,6 +521,7 @@ export function HUD() {
       <Dock />
       <RewardModals />
       <Fishpedia />
+      <Goals />
     </div>
   )
 }
