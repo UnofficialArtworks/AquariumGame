@@ -11,7 +11,7 @@ import { updateAutoFeeder } from '../sim/autoFeeder'
 import { FEEDER_SPOUT } from './decorations/builders/gadgets'
 import { useGameStore } from '../state/useGameStore'
 import { useUIStore } from '../state/useUIStore'
-import { NURSERY_DECORATIONS } from './nurseryLayout'
+import { NURSERY_DECORATIONS, POND_DECORATIONS } from './nurseryLayout'
 import { bubbles } from '../sim/bubbles'
 import { sparks } from '../sim/sparks'
 import { usePopupStore } from '../sim/popups'
@@ -42,7 +42,7 @@ export function SimController() {
     bubbles.length = 0
     sparks.length = 0
     usePopupStore.setState({ popups: [] })
-    rebuildObstacles(activeTank === 'nursery' ? NURSERY_DECORATIONS : useGameStore.getState().placedDecorations)
+    rebuildObstacles(activeTank === 'nursery' ? NURSERY_DECORATIONS : activeTank === 'pond' ? POND_DECORATIONS : useGameStore.getState().placedDecorations)
     return useGameStore.subscribe((state, prev) => {
       if (activeTank === 'main' && state.placedDecorations !== prev.placedDecorations) rebuildObstacles(state.placedDecorations)
     })

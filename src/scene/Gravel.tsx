@@ -96,8 +96,10 @@ function buildSkirt(def: SubstrateDefinition): THREE.BufferGeometry {
 const pebbleGeometry = noiseRock(1, 4.2, 0.22, 1)
 
 /** Sloped sand bed, cut-away strata visible through the glass, and ~1.5k instanced pebbles. */
-export function Gravel() {
-  const substrateId = useGameStore((s) => s.substrateId)
+/** The tank floor; the Koi Pond passes its own pebbles instead of the player's choice. */
+export function Gravel({ substrateId: override }: { substrateId?: string } = {}) {
+  const chosen = useGameStore((s) => s.substrateId)
+  const substrateId = override ?? chosen
   const def = getSubstrateDef(substrateId)
   const terrain = useMemo(() => buildTerrain(def), [def])
   const skirt = useMemo(() => buildSkirt(def), [def])

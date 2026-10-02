@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type RefObject } from 'react'
+import { hatchStart } from '../../sim/hatching'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { FishDefinition, FishInstance } from '../../state/types'
@@ -212,7 +213,8 @@ export function SeaTurtleVisual({ def, agentRef, seed = 0 }: { def: FishDefiniti
 
 export function SeaTurtleEntity({ instance, def }: { instance: FishInstance; def: FishDefinition }) {
   const { groupRef, agentRef } = useFishBrain(instance.id, def, { orientation: 'full', sizeScale: instance.sizeScale })
-  const [start] = useState<[number, number, number]>(() => [
+  // A fresh hatchling starts inside its egg.
+  const [start] = useState<[number, number, number]>(() => hatchStart(instance) ?? [
     randomRange(-INTERIOR_HALF_WIDTH + 0.9, INTERIOR_HALF_WIDTH - 0.9),
     randomRange(1.2, 2.4),
     randomRange(-INTERIOR_HALF_DEPTH + 0.6, INTERIOR_HALF_DEPTH - 0.6),

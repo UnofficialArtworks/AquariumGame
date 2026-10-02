@@ -59,7 +59,7 @@ export const FAVORITE_COIN_BONUS = 0.1
 /** How many of this schooling species share the main tank (null for loners). */
 export function schoolSize(fish: FishInstance, owned: FishInstance[]): number | null {
   if (!getFishDef(fish.defId)?.schooling) return null
-  return owned.filter((f) => f.habitat === 'main' && f.defId === fish.defId).length
+  return owned.filter((f) => f.habitat === fish.habitat && f.defId === fish.defId).length
 }
 
 export function hasFavorite(fishId: string, placed: DecorationInstance[]): boolean {

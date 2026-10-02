@@ -26,6 +26,9 @@ const SPECIES_TRAITS: Record<string, { sizeRange: [number, number]; eggCountRang
   lionfish: { sizeRange: [0.88, 1.15], eggCountRange: [1, 2] },
   mandarin: { sizeRange: [0.83, 1.12], eggCountRange: [2, 4] },
   'reef-shark': { sizeRange: [0.9, 1.12], eggCountRange: [1, 2] },
+  'comet-goldfish': { sizeRange: [0.86, 1.16], eggCountRange: [2, 5] },
+  'golden-orfe': { sizeRange: [0.88, 1.15], eggCountRange: [2, 4] },
+  'butterfly-koi': { sizeRange: [0.9, 1.15], eggCountRange: [1, 3] },
   arowana: { sizeRange: [0.9, 1.13], eggCountRange: [1, 2] },
   'nerite-snail': { sizeRange: [0.85, 1.16], eggCountRange: [1, 4] },
   'cherry-shrimp': { sizeRange: [0.8, 1.16], eggCountRange: [3, 6] },
@@ -276,6 +279,25 @@ export const FISH_CATALOG: FishDefinition[] = [
     description: 'The crown jewel of any tank. Its scales shimmer like the night sky.',
     color: '#f5f7ff', color2: '#6c4dff', color3: '#64f5ff', pattern: 'calico', finStyle: 'veil', features: ['whiskers', 'longFins'], glow: true,
     bodyLength: 0.7, bodyHeight: 0.3, bodyWidth: 0.6, maxSpeed: 0.6, turnSpeed: 1.8, zone: 'middle', coinValue: 40,
+  }),
+  // --- Koi Pond fish (they arrive in the pond, which opens at level 20) ---
+  fish({
+    id: 'comet-goldfish', name: 'Comet Goldfish', rarity: 'uncommon', cost: 420, unlockLevel: 20, pond: true,
+    description: 'A speedy pond goldfish with a long, streaming comet tail.',
+    color: '#ff5a2a', color2: '#fff2e6', pattern: 'calico', finStyle: 'veil', features: ['longFins'],
+    bodyLength: 0.4, bodyHeight: 0.16, maxSpeed: 0.85, turnSpeed: 2.4, zone: 'top', coinValue: 10, appetite: 1.2,
+  }),
+  fish({
+    id: 'golden-orfe', name: 'Golden Orfe', rarity: 'rare', cost: 900, unlockLevel: 21, pond: true,
+    description: 'A sleek golden pond fish that loves to cruise near the surface in a group.',
+    color: '#ffb02e', color2: '#ffe7a0', pattern: 'gradient', finStyle: 'forked', schooling: true,
+    bodyLength: 0.46, bodyHeight: 0.15, maxSpeed: 0.75, turnSpeed: 2.1, zone: 'top', coinValue: 14,
+  }),
+  fish({
+    id: 'butterfly-koi', name: 'Butterfly Koi', rarity: 'epic', cost: 2200, unlockLevel: 23, pond: true,
+    description: 'Long, flowing fins like butterfly wings. The pride of any pond.',
+    color: '#fbf6ee', color2: '#ff6a2a', color3: '#1b1b1b', pattern: 'calico', finStyle: 'veil', features: ['whiskers', 'longFins'],
+    bodyLength: 0.62, bodyHeight: 0.24, maxSpeed: 0.5, turnSpeed: 1.6, zone: 'middle', coinValue: 22,
   }),
 ]
 

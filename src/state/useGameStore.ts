@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { DecorationInstance, FishInstance, FishVitals, GameSettings, GameState, WasteItem } from './types'
+import type { DecorationInstance, FishInstance, FishVitals, GameSettings, GameState, Habitat, WasteItem } from './types'
 import { CURRENT_SAVE_VERSION, createInitialState, freshVitals, migrate, sanitize } from './migrations'
 import {
   COIN_INTERVAL_MAX,
@@ -20,19 +20,34 @@ import {
   OFFLINE_PASSIVE_PER_SECOND,
   PASSIVE_COINS_PER_SECOND,
   salePrice as calculateSalePrice,
+  NURSERY_CAPACITY,
 } from './economy'
 import { levelFromXp, levelUpCoinReward, MAX_LEVEL } from './progression'
 import { pickFishName } from './names'
 import { useUIStore } from './useUIStore'
 import { DECORATION_CATALOG, getDecorationDef } from '../scene/decorations/decorationDefinitions'
-import { FISH_CATALOG, getFishDef, sampleFishSize } from '../scene/fish/fishDefinitions'
+import { FISH_CATALOG, getFishDef, MAX_OWNED_FISH, sampleFishSize } from '../scene/fish/fishDefinitions'
 import { BACKGROUND_CATALOG } from '../scene/backgrounds'
 import { SUBSTRATE_CATALOG } from '../scene/substrates'
 import { FOOD_CATALOG, getFoodDef } from '../scene/food/foodDefinitions'
 import { clampToInterior } from '../scene/TankBounds'
 import { algaeCoverage } from '../sim/algae'
 import { progressNursery, sampleEggCount } from './nursery'
-import { checkPurchase, friendshipProblem, purchaseXp, transferProblem, type ShopCategory } from './rules'
+import {
+  checkPurchase,
+  friendshipProblem,
+  mainTankCount,
+  nurseryOccupancy,
+  POND_CAPACITY,
+  POND_LEVEL,
+  pondCount,
+  purchaseXp,
+  tankName,
+  transferProblem,
+  type ShopCategory,
+} from './rules'
+import { castsLeft, type Catch } from './fishing'
+import { speciesLabel } from './morphs'
 import { bonusesFor } from './bonuses'
 import { beautyOf } from './beauty'
 import { STAND_CATALOG } from '../scene/stands/standDefinitions'
@@ -83,7 +98,7 @@ interface GameActions {
   releaseFish: (fishId: string) => number | null
   salePrice: (fishId: string) => number
   renameAquarium: (name: string) => void
-  transferFish: (fishId: string, destination: 'main' | 'nursery') => boolean
+  transferFish: (fishId: string, destination: Habitat) => boolean
   startFriendship: (firstId: string, secondId: string) => boolean
   renameFish: (fishId: string, name: string) => void
   addDecorationInstance: (defId: string) => void
@@ -114,6 +129,10 @@ interface GameActions {
   /** A visitor left a gift on the gravel at (x, z). */
   leaveGift: (visitorId: string, x: number, z: number) => void
   openGift: (giftId: string) => VisitorGift | null
+  /** Use one of today's fishing casts. False when there are none left. */
+  castLine: () => boolean
+  /** Keep what you reeled in. Returns a sentence saying what you got. */
+  landCatch: (c: Catch) => string
 }
 
 export type GameStore = GameState & GameActions
@@ -188,7 +207,7 @@ export const useGameStore = create<GameStore>()(
               ? addHunger(v, HUNGER_PER_SECOND * def.appetite)
               : def ? { ...v, growth: grow(v.growth, CLEANUP_GROWTH_PER_SECOND) } : v
           }
-          const mainFishCount = s.ownedFish.filter((f) => f.habitat !== 'nursery').length
+          const mainFishCount = s.ownedFish.filter((f) => f.habitat === 'main').length
           const murk = Math.min(
             1,
             s.murk +
@@ -227,7 +246,7 @@ export const useGameStore = create<GameStore>()(
             const v = vitals[f.id] ?? freshVitals()
             const rate = HUNGER_PER_SECOND * def.appetite
             // The auto-feeder only reaches fish living in the main tank.
-            const fed = bonuses.autoFeeder && f.habitat !== 'nursery' && rate > 0
+            const fed = bonuses.autoFeeder && f.habitat === 'main' && rate > 0
             // Fish keep earning while away until they get too hungry — feed before you leave!
             const productive = rate > 0 && !fed ? Math.max(0, Math.min(earnSeconds, (HUNGER_COIN_CUTOFF - v.hunger) / rate)) : earnSeconds
             if (def.coinValue > 0) coins += (coinValueFor(def.coinValue, v.growth) * productive) / averageInterval
@@ -237,7 +256,7 @@ export const useGameStore = create<GameStore>()(
             if (fed && vitals[f.id].hunger > AUTO_FEEDER_HUNGER_CAP) vitals[f.id] = { ...vitals[f.id], hunger: AUTO_FEEDER_HUNGER_CAP }
             if (vitals[f.id].hunger > 0.5) hungryFish++
           }
-          const mainFishCount = s.ownedFish.filter((f) => f.habitat !== 'nursery').length
+          const mainFishCount = s.ownedFish.filter((f) => f.habitat === 'main').length
           const murk = Math.min(1, s.murk + Math.min(0.45, elapsed * (MURK_BASE_PER_SECOND + MURK_PER_FISH_PER_SECOND * mainFishCount) * bonuses.murkRate))
           const earned = Math.floor(coins)
           const { eggCreated, hatched, ...nursery } = progressNursery({ ...s, fishVitals: vitals }, elapsed)
@@ -297,6 +316,7 @@ export const useGameStore = create<GameStore>()(
             unlocks.push(...unlocksAtLevel(level))
           }
           set({ xp, currency: s.currency + coins, treats })
+          if (before < POND_LEVEL && after >= POND_LEVEL) unlocks.unshift('🪷 The Koi Pond (a whole new tank!)')
           useUIStore.getState().setLevelUp({ level: after, coins, treats: treatRewards, unlocks })
         },
 
@@ -328,7 +348,7 @@ export const useGameStore = create<GameStore>()(
           if (!v) return
           const food = getFoodDef(foodId)
           const fish = s.ownedFish.find((f) => f.id === fishId)
-          const lamp = fish?.habitat === 'nursery' ? 1 : bonusesFor(s.placedDecorations).growthRate
+          const lamp = fish?.habitat === 'main' ? bonusesFor(s.placedDecorations).growthRate : 1
           const growthBoost = (food.effect === 'growth' ? 0.25 : GROWTH_PER_MEAL) * lamp
           set({
             fishVitals: {
@@ -349,8 +369,9 @@ export const useGameStore = create<GameStore>()(
 
         buyFish: (defId) => {
           const s = get()
+          // Pond fish arrive straight in the Koi Pond.
           const fish: FishInstance = { id: crypto.randomUUID(), defId, name: pickFishName(s.ownedFish.map((f) => f.name)),
-            bornAt: Date.now(), habitat: 'main', sizeScale: sampleFishSize(defId) }
+            bornAt: Date.now(), habitat: getFishDef(defId)?.pond ? 'pond' : 'main', sizeScale: sampleFishSize(defId) }
           const bought = purchase('fish', defId, (s) => ({
             ownedFish: [...s.ownedFish, fish],
             fishVitals: { ...s.fishVitals, [fish.id]: freshVitals(0.35) },
@@ -689,6 +710,54 @@ export const useGameStore = create<GameStore>()(
           const reward = giftReward(v, levelFromXp(s.xp).level)
           const gift: VisitorGift = { id: `gift-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, visitorId, x, z, ...reward, at: Date.now() }
           set({ gifts: [...s.gifts, gift] })
+        },
+
+        castLine: () => {
+          const s = get()
+          const today = dayKey()
+          if (castsLeft(s.fishing, today) <= 0) return false
+          set({ fishing: { day: today, casts: (s.fishing.day === today ? s.fishing.casts : 0) + 1 } })
+          return true
+        },
+
+        landCatch: (c) => {
+          const s = get()
+          set({ stats: { ...s.stats, fishCaught: s.stats.fishCaught + 1 } })
+          if (c.kind === 'coins') {
+            get().collectCoins(c.coins, false)
+            return `You reeled in ${c.name}! +${c.coins} coins`
+          }
+          if (c.kind === 'treat') {
+            set((g) => ({ treats: { ...g.treats, [c.treat]: (g.treats[c.treat] ?? 0) + c.count } }))
+            return `You reeled in ${c.count} ${getFoodDef(c.treat).name}!`
+          }
+          const def = getFishDef(c.defId)!
+          // Somewhere with room: pond fish to the pond, others to the nursery, else the aquarium.
+          const pondOpen = levelFromXp(s.xp).level >= POND_LEVEL
+          const room: Habitat | null =
+            def.pond && pondOpen && pondCount(s.ownedFish) < POND_CAPACITY ? 'pond'
+            : nurseryOccupancy(s) < NURSERY_CAPACITY ? 'nursery'
+            : !def.pond && mainTankCount(s.ownedFish) < MAX_OWNED_FISH ? 'main'
+            : null
+          if (!room) {
+            const coins = Math.round(def.cost * 0.4)
+            get().collectCoins(coins, false)
+            return `You caught a ${def.name}, but there's no room, so you let it swim away. +${coins} coins`
+          }
+          const fish: FishInstance = {
+            id: crypto.randomUUID(),
+            defId: def.id,
+            name: pickFishName(s.ownedFish.map((f) => f.name)),
+            bornAt: Date.now(),
+            habitat: room,
+            sizeScale: sampleFishSize(def.id),
+            ...(c.morph
+              ? { inheritance: { bodyParentName: '', colorParentName: '', bodyParentId: '', colorParentId: '', color: def.color, color2: def.color2, color3: def.color3, morph: c.morph } }
+              : {}),
+          }
+          set((g) => ({ ownedFish: [...g.ownedFish, fish], fishVitals: { ...g.fishVitals, [fish.id]: { hunger: 0.3, growth: 0.7, mealsEaten: 4 } } }))
+          get().noteFish([fish], false)
+          return `You caught ${fish.name} the ${speciesLabel(def, c.morph)}! It's waiting in ${tankName(room)}.`
         },
 
         openGift: (giftId) => {

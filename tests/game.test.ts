@@ -1157,3 +1157,103 @@ test('patterns pass from either parent, matching parents can surprise, and the F
   const eggSave = migrate({ ...store.getState(), ownedFish: [{ ...baby, habitat: 'main', inheritance: { ...baby.inheritance, pattern: 'plaid' } }] } as never, 6)
   assert.equal(eggSave.ownedFish[0].inheritance?.pattern, undefined)
 })
+
+test('a hatched baby keeps its egg id (so it can swim out of that egg) and starts there only while fresh', async () => {
+  const { hatchStart, rememberEggSpot } = await import('../src/sim/hatching')
+  const [first, second] = store.getState().ownedFish
+  const egg = { ...createNurseryEgg(first, second), id: 'egg-hatch-test', remainingSeconds: 0.5 }
+  store.setState({ nurseryEggs: [egg], lastTickTimestamp: Date.now() - 2000 })
+  store.getState().tick()
+  const baby = store.getState().ownedFish.find((f) => f.id === 'egg-hatch-test')!
+  assert.ok(baby)
+  assert.equal(baby.habitat, 'nursery')
+  rememberEggSpot('egg-hatch-test', [0.25, 0.3, 0.45])
+  assert.deepEqual(hatchStart(baby), [0.25, 0.3, 0.45])
+  assert.deepEqual(hatchStart(baby), [0.25, 0.3, 0.45])
+  assert.equal(hatchStart({ ...baby, bornAt: Date.now() - 60_000 }), null)
+  assert.equal(hatchStart({ ...baby, habitat: 'main' }), null)
+})
+
+test('the cleanup crew has jobs, counts them, and earns a stat for every one', async () => {
+  const { crewJobFor, crewDidWork, crewJobsDone, TIP_EVERY } = await import('../src/sim/crew')
+  const { Vector3 } = await import('three')
+  assert.equal(crewJobFor(getFishDef('nerite-snail')), 'glass')
+  assert.equal(crewJobFor(getFishDef('cherry-shrimp')), 'gravel')
+  assert.equal(crewJobFor(getFishDef('starry-pleco')), 'gravel')
+  assert.equal(crewJobFor(getFishDef('goldfish')), null)
+  const before = store.getState().stats.crewJobs
+  for (let i = 0; i < TIP_EVERY; i++) crewDidWork('crew-test', getFishDef('cherry-shrimp')!, new Vector3())
+  assert.equal(crewJobsDone('crew-test'), TIP_EVERY)
+  assert.equal(store.getState().stats.crewJobs, before + TIP_EVERY)
+})
+
+test('the Koi Pond opens at level 20, takes pond fish straight from the shop, and keeps them out of the aquarium', async () => {
+  const { POND_LEVEL, POND_CAPACITY, moveTargets, quickMove, mainTankCount, pondCount } = await import('../src/state/rules')
+  const xpFor = (level: number) => { let xp = 0; while (levelFromXp(xp).level < level) xp += 50; return xp }
+  const goldie = store.getState().ownedFish[0]
+  // Before level 20 the pond is shut.
+  assert.match(transferProblem(store.getState(), goldie.id, 'pond')!, /opens at level 20/)
+  assert.ok(!moveTargets(store.getState(), goldie).includes('pond'))
+
+  store.setState({ xp: xpFor(POND_LEVEL + 3), currency: 100000 })
+  assert.ok(moveTargets(store.getState(), goldie).includes('pond'))
+  assert.equal(transferProblem(store.getState(), goldie.id, 'pond'), null)
+  assert.ok(store.getState().transferFish(goldie.id, 'pond'))
+
+  // Pond fish arrive in the pond and don't count toward the aquarium's limit.
+  const id = store.getState().buyFish('butterfly-koi')!
+  const koi = store.getState().ownedFish.find((f) => f.id === id)!
+  assert.equal(koi.habitat, 'pond')
+  assert.equal(pondCount(store.getState().ownedFish), 2)
+  assert.equal(mainTankCount(store.getState().ownedFish), store.getState().ownedFish.length - 2)
+  assert.match(transferProblem(store.getState(), koi.id, 'main')!, /pond fish/)
+  assert.deepEqual(moveTargets(store.getState(), koi), ['nursery'])
+  assert.equal(quickMove(store.getState(), { ...koi, habitat: 'nursery' }), 'pond')
+
+  // A full pond blocks more pond fish, and says why.
+  const full = Array.from({ length: POND_CAPACITY }, (_, i) => ({ ...koi, id: `p${i}` }))
+  const check = checkPurchase({ ...store.getState(), ownedFish: full }, 'fish', 'comet-goldfish')
+  assert.equal(check.reason, 'full')
+  assert.match(purchaseProblem(check, 'Comet Goldfish', 0)!, /Koi Pond is full/)
+
+  // Pond fish are saved where they live.
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  assert.equal(migrate({ ...saved }, 6).ownedFish.find((f) => f.id === koi.id)?.habitat, 'pond')
+})
+
+test('fishing: a few casts a day, fair catches, and caught fish land somewhere with room', async () => {
+  const { castsLeft, CASTS_PER_DAY, rollCatch, reelDifficulty, markerAt, catchableFish } = await import('../src/state/fishing')
+  const { dayKey } = await import('../src/state/goals')
+  const today = dayKey()
+  assert.equal(castsLeft({ day: '2000-01-01', casts: 99 }, today), CASTS_PER_DAY)
+  for (let i = 0; i < CASTS_PER_DAY; i++) assert.ok(store.getState().castLine())
+  assert.equal(store.getState().castLine(), false)
+  assert.equal(castsLeft(store.getState().fishing, today), 0)
+
+  // Catches only include fish already unlocked, and rarer fish are harder to reel in.
+  const level1 = catchableFish(1)
+  assert.ok(level1.length > 0 && level1.every((d) => d.unlockLevel <= 1))
+  for (let i = 0; i < 300; i++) {
+    const c = rollCatch(0)
+    if (c.kind === 'fish') assert.ok(getFishDef(c.defId)!.unlockLevel <= 1)
+    if (c.kind === 'coins') assert.ok(c.coins > 0)
+  }
+  const easy = reelDifficulty({ kind: 'fish', defId: 'goldfish' })
+  const hard = reelDifficulty({ kind: 'fish', defId: 'reef-shark' })
+  assert.ok(hard.zone < easy.zone && hard.speed > easy.speed)
+  assert.equal(markerAt(0, 1), 0)
+  assert.ok(Math.abs(markerAt(0.5, 1) - 1) < 1e-9)
+
+  // Landing a catch pays out, and a fish goes to the nursery when it has room.
+  const coins = store.getState().currency
+  assert.match(store.getState().landCatch({ kind: 'coins', coins: 40, icon: '🪙', name: 'a pouch of coins' }), /\+40 coins/)
+  assert.equal(store.getState().currency, coins + 40)
+  const count = store.getState().ownedFish.length
+  assert.match(store.getState().landCatch({ kind: 'fish', defId: 'guppy', morph: 'golden' }), /nursery/)
+  const caught = store.getState().ownedFish.at(-1)!
+  assert.equal(store.getState().ownedFish.length, count + 1)
+  assert.equal(caught.habitat, 'nursery')
+  assert.equal(caught.inheritance?.morph, 'golden')
+  assert.ok(store.getState().fishpedia.guppy?.morphs?.includes('golden'))
+  assert.equal(store.getState().stats.fishCaught, 2)
+})

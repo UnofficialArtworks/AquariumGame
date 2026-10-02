@@ -1,3 +1,5 @@
+import type { Habitat } from '../../state/types'
+import { FISHING_LEVEL } from '../../state/fishing'
 import { getSeason, seasonOn } from '../../state/seasons'
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../../state/useGameStore'
@@ -15,18 +17,7 @@ import { algaeCoverage } from '../../sim/algae'
 import { startWaterChange, waterChange } from '../../sim/waterChange'
 import { FRIENDSHIP_SECONDS, NURSERY_CAPACITY } from '../../state/economy'
 import { getEggCountRange, inheritedDefinition } from '../../state/nursery'
-import {
-  checkPurchase,
-  friendshipProblem,
-  isNewInShop,
-  mainTankCount,
-  newShopItems,
-  nurseryOccupancy,
-  purchaseProblem,
-  transferProblem,
-  type PurchaseState,
-  type ShopCategory,
-} from '../../state/rules'
+import { checkPurchase, friendshipProblem, isNewInShop, mainTankCount, newShopItems, nurseryOccupancy, purchaseProblem, transferProblem, type PurchaseState, type ShopCategory, quickMove, tankName, TANK_LABELS, POND_CAPACITY } from '../../state/rules'
 import { ShopItemCard } from '../ShopItemCard'
 import { ItemThumbnail } from '../ItemThumbnail'
 import { Button } from '../components/Button'
@@ -70,7 +61,7 @@ function countdown(seconds: number): string {
 
 // --- Watch: your fish (or the nursery) ------------------------------------------
 
-function FishCard({ fishId, destination }: { fishId: string; destination: 'main' | 'nursery' }) {
+function FishCard({ fishId }: { fishId: string }) {
   const fish = useGameStore((s) => s.ownedFish.find((f) => f.id === fishId))
   const hunger = useGameStore((s) => Math.round((s.fishVitals[fishId]?.hunger ?? 0) * 20) / 20)
   const growth = useGameStore((s) => Math.round((s.fishVitals[fishId]?.growth ?? 0) * 100))
@@ -84,7 +75,8 @@ function FishCard({ fishId, destination }: { fishId: string; destination: 'main'
   const morph = fish.inheritance?.morph
   const color = def?.color ?? '#7fd'
   const color2 = def?.color2 ?? '#fff'
-  const where = destination === 'nursery' ? 'the nursery' : 'your aquarium'
+  const destination = quickMove(useGameStore.getState(), fish)
+  const where = tankName(destination)
   return (
     <div className={`fish-card ${selected ? 'is-selected' : ''}`}>
       <button
@@ -114,22 +106,30 @@ function FishCard({ fishId, destination }: { fishId: string; destination: 'main'
           else if (transferFish(fishId, destination)) pushToast(`${fish.name} moved to ${where}`, 'success', '🐠')
         }}
       >
-        {destination === 'nursery' ? '🫧' : '🐠'}
+        {TANK_LABELS[destination].icon}
       </button>
     </div>
   )
 }
 
-function FishGrid({ habitat }: { habitat: 'main' | 'nursery' }) {
+function FishGrid({ habitat }: { habitat: Habitat }) {
   const ids = useGameStore((s) => s.ownedFish.filter((f) => f.habitat === habitat).map((f) => f.id).join(','))
   const list = ids ? ids.split(',') : []
   if (!list.length) {
-    return <p className="empty-note">{habitat === 'nursery' ? 'Send a fish from your aquarium to begin.' : 'Your tank is waiting for a fish! Visit the Shop to adopt one.'}</p>
+    return (
+      <p className="empty-note">
+        {habitat === 'nursery'
+          ? 'Send a fish from your aquarium to begin.'
+          : habitat === 'pond'
+            ? 'Your pond is waiting! Pond fish from the Shop arrive here, and you can move other fish in from their cards.'
+            : 'Your tank is waiting for a fish! Visit the Shop to adopt one.'}
+      </p>
+    )
   }
   return (
     <div className="fish-grid">
       {list.map((id) => (
-        <FishCard key={id} fishId={id} destination={habitat === 'nursery' ? 'main' : 'nursery'} />
+        <FishCard key={id} fishId={id} />
       ))}
     </div>
   )
@@ -257,22 +257,35 @@ function NurseryContent() {
 
 export function WatchDrawer() {
   const activeTank = useUIStore((s) => s.activeTank)
-  const count = useGameStore((s) => s.ownedFish.filter((f) => f.habitat === 'main').length)
+  const count = useGameStore((s) => s.ownedFish.filter((f) => f.habitat === activeTank).length)
+  const level = useGameStore((s) => levelFromXp(s.xp).level)
   if (activeTank === 'nursery') return <NurseryContent />
+  const pond = activeTank === 'pond'
+  const canFish = level >= FISHING_LEVEL
   return (
     <>
-      <DrawerHead title={`Your fish · ${count}`} hint="Tap a fish to visit it. Tap one in the tank to say hi!">
+      <DrawerHead
+        title={pond ? `Koi Pond · ${count}/${POND_CAPACITY}` : `Your fish · ${count}`}
+        hint={pond ? 'A calm pond that stays sparkling clean. Pond fish from the Shop arrive here.' : 'Tap a fish to visit it. Tap one in the tank to say hi!'}
+      >
         <Button onClick={savePhoto} title="Save a photo of your aquarium">
           📸 Photo
         </Button>
         <Button onClick={() => useUIStore.getState().setRelax(true)} title="Hide the buttons and let the camera wander">
           😌 Relax
         </Button>
-        <Button onClick={() => useUIStore.getState().openModal('share')} title="Send your tank to a friend as a link">
-          🔗 Share
-        </Button>
+        {canFish && (
+          <Button onClick={() => useUIStore.getState().openModal('fishing')} title="Go fishing for coins, treats and new fish">
+            🎣 Fishing
+          </Button>
+        )}
+        {!pond && (
+          <Button onClick={() => useUIStore.getState().openModal('share')} title="Send your tank to a friend as a link">
+            🔗 Share
+          </Button>
+        )}
       </DrawerHead>
-      <FishGrid habitat="main" />
+      <FishGrid habitat={activeTank} />
       <p className="save-note">Progress saves automatically in this browser.</p>
     </>
   )
@@ -638,9 +651,10 @@ export function ShopDrawer() {
               cost={def.cost}
               rarity={def.rarity}
               {...card('fish', def.id, def.name, def.unlockLevel)}
+              badge={def.pond ? '🪷 Lives in the Koi Pond' : undefined}
               countOwned={ownedFish.filter((f) => f.defId === def.id).length}
               onBuy={() => {
-                if (g.buyFish(def.id)) pushToast(`${def.name} joined your aquarium!`, 'success', '🐠')
+                if (g.buyFish(def.id)) pushToast(`${def.name} joined ${def.pond ? 'your Koi Pond' : 'your aquarium'}!`, 'success', def.pond ? '🪷' : '🐠')
               }}
             />
           ))}

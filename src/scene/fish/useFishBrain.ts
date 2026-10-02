@@ -36,6 +36,7 @@ import { useUIStore } from '../../state/useUIStore'
 import { bonusesFor } from '../../state/bonuses'
 import { moodBonus, personalityOf, type Personality as Character } from '../../state/personality'
 import { getDecorationDef } from '../decorations/decorationDefinitions'
+import { crewDidWork, crewJobFor } from '../../sim/crew'
 
 /** Vertical band a fish prefers, as [min, max] world Y. */
 function zoneBand(def: FishDefinition): [number, number] {
@@ -399,6 +400,9 @@ export function useFishBrain(
   // Visitors are guests passing through; residents have a character of their own.
   const character = home ? null : personalityOf(fishId)
   const toFavorite = useRef(false)
+  // Crew members on gravel duty (the starry pleco) tidy mess as they cruise.
+  const tidier = !home && crewJobFor(def) === 'gravel'
+  const tidyTimer = useRef(0)
 
   useEffect(() => {
     const group = groupRef.current
@@ -761,8 +765,14 @@ export function useFishBrain(
               }
               // Sometimes pause for a look around before moving on.
               if (Math.random() < 0.45) hoverTimer.current = randomRange(1, 3.5)
+              const mess = tidier && ui.activeTank === 'main' && store.waste.length > 0 && Math.random() < 0.6
               if (home) pickHomeTarget(def, home, wanderTarget.current)
-              else if (character) toFavorite.current = pickCharacterTarget(def, character, ui.activeTank === 'main', wanderTarget.current)
+              else if (mess) {
+                // The pleco's job: head for some mess on the gravel.
+                const w = store.waste[Math.floor(Math.random() * store.waste.length)]
+                wanderTarget.current.set(w.x, floorHeightAt(w.x, w.z) + 0.12, w.z)
+                toFavorite.current = false
+              } else if (character) toFavorite.current = pickCharacterTarget(def, character, ui.activeTank === 'main', wanderTarget.current)
               else pickWanderTarget(def, wanderTarget.current)
               wanderTimer.current = randomRange(3, 7)
             }
@@ -921,7 +931,8 @@ export function useFishBrain(
     // --- side effects: coins, poop, bubbles ---------------------------------
     if (def.coinValue > 0 && hunger < HUNGER_COIN_CUTOFF && !agent.sleeping && !ui.visiting) {
       const dirtiness = store.murk * 1.2 + algaeCoverage() * 0.8 + Math.min(1, store.waste.length / 25) * 0.6
-      const lucky = ui.activeTank === 'main' ? bonusesFor(store.placedDecorations).coinRate * moodBonus(fishId, store.ownedFish, store.placedDecorations) : 1
+      const mood = moodBonus(fishId, store.ownedFish, store.placedDecorations)
+      const lucky = ui.activeTank === 'main' ? bonusesFor(store.placedDecorations).coinRate * mood : ui.activeTank === 'pond' ? mood : 1
       coinTimer.current -= (dt * lucky) / (1 + dirtiness)
       if (coinTimer.current <= 0) {
         coinTimer.current = randomRange(COIN_INTERVAL_MIN, COIN_INTERVAL_MAX)
@@ -935,6 +946,17 @@ export function useFishBrain(
           ? scratchA.set(0, -def.bodyLength * 0.5 * agent.size, 0).applyQuaternion(group.quaternion).add(pos)
           : scratchA.set(0, 0, def.bodyLength * 0.55 * agent.size).applyQuaternion(group.quaternion).add(pos)
       dropPoop(tail)
+    }
+    if (tidier && ui.activeTank === 'main') {
+      tidyTimer.current -= dt
+      if (tidyTimer.current <= 0) {
+        tidyTimer.current = 0.5
+        const near = pos.y < floorHeightAt(pos.x, pos.z) + 0.45 ? store.waste.find((w) => Math.hypot(w.x - pos.x, w.z - pos.z) < 0.35) : undefined
+        if (near && store.removeWaste([near.id])) {
+          emitSparks(scratchA.set(near.x, floorHeightAt(near.x, near.z) + 0.05, near.z), 5, '#c9a86a', { speed: 0.3, size: 0.8, life: 0.6 })
+          crewDidWork(fishId, def, pos)
+        }
+      }
     }
     if (Math.random() < dt * 0.05) emitBubble(pos.x, pos.y + 0.05, pos.z, 0.012 + Math.random() * 0.01)
     if (zooming) {

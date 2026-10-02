@@ -10,6 +10,7 @@ import { decorMaterials } from '../materials/materials'
 import { emitBubble } from '../../sim/bubbles'
 import { emitSparks } from '../../sim/sparks'
 import { sfx } from '../../audio/sfx'
+import { rememberEggSpot } from '../../sim/hatching'
 import { hashString } from '../../utils/rng'
 import type { FishDefinition, NurseryEgg } from '../../state/types'
 
@@ -89,39 +90,47 @@ const oilMaterial = new THREE.MeshStandardMaterial({ color: '#ffd76a', emissive:
 function buildEmbryo(def: FishDefinition, stage: number) {
   const b = new MeshBuilder()
   const k = stage / (STAGES - 1)
-  const yolk = R * (0.42 - 0.2 * k)
-  const thick = R * (0.1 + 0.11 * k)
-  const curl = R * 0.04 + yolk + thick * 0.55
-  const arc = Math.PI * (0.7 + 1.1 * k)
-  const start = -Math.PI * 0.35
+  const yolk = R * (0.4 - 0.18 * k)
+  const thick = R * (0.09 + 0.1 * k)
+  // The body lies on the yolk and wraps further round it as the baby grows.
+  const curl = yolk + thick * 0.45
+  const arc = Math.PI * (0.65 + 1.05 * k)
+  const start = Math.PI * 0.55
   const pts: V3[] = []
   for (let i = 0; i <= 18; i++) {
-    const a = start + (arc * i) / 18
-    // Head first: the curl starts at the head and wraps round to the tail.
-    pts.push([Math.cos(a) * curl, Math.sin(a) * curl, (i / 18 - 0.5) * thick * 0.6])
+    const a = start - (arc * i) / 18
+    pts.push([Math.cos(a) * curl, Math.sin(a) * curl, 0])
   }
-  pts.reverse()
-  const body = new THREE.Color('#f4e9d6').lerp(new THREE.Color(def.color), 0.15 + 0.65 * k)
-  b.add('satin', taperedTube(pts, thick, thick * 0.25, 40, 10), { color: body })
+  const body = new THREE.Color('#f1e6d2').lerp(new THREE.Color(def.color), 0.1 + 0.6 * k)
+  b.add('satin', taperedTube(pts, thick, thick * 0.2, 40, 10), { color: body })
+  // A big round head at the front of the curl.
   const head = new THREE.Vector3(...pts[0])
-  const out = head.clone().setZ(0).normalize()
+  const out = head.clone().normalize()
+  const along = new THREE.Vector3(-out.y, out.x, 0)
+  const headR = thick * 1.3
+  const headAt = head.clone().addScaledVector(out, thick * 0.15)
+  b.add('satin', new THREE.SphereGeometry(headR, 16, 12), { color: body, position: headAt.toArray() as V3 })
   if (stage >= 1) {
-    const eye = R * (0.06 + 0.08 * k)
+    // Two big dark eyes looking out through the shell, each with a shine.
+    const eye = headR * (0.42 + 0.18 * k)
     for (const side of [1, -1]) {
-      const p = head.clone().addScaledVector(out, thick * 0.35).add(new THREE.Vector3(0, 0, side * thick * 0.75))
-      b.add('glossy', new THREE.SphereGeometry(eye, 12, 10), { color: '#11161f', position: p.toArray() as V3 })
-      b.add('glossy', new THREE.SphereGeometry(eye * 0.3, 6, 5), { color: '#ffffff', position: p.clone().add(new THREE.Vector3(eye * 0.4, eye * 0.4, side * eye * 0.6)).toArray() as V3 })
+      const p = headAt.clone().addScaledVector(along, side * headR * 0.45).add(new THREE.Vector3(0, 0, headR * 0.72))
+      b.add('glossy', new THREE.SphereGeometry(eye, 14, 10), { color: '#10151d', position: p.toArray() as V3 })
+      b.add('glossy', new THREE.SphereGeometry(eye * 0.32, 8, 6), { color: '#ffffff', position: p.clone().add(new THREE.Vector3(-eye * 0.3, eye * 0.35, eye * 0.75)).toArray() as V3 })
     }
   }
   if (stage >= 2) {
-    // Little dark speckles (melanophores) dusted along the back and over the yolk.
+    // Little dark speckles (melanophores) along the visible side of the body.
     const count = 6 + stage * 3
     for (let i = 0; i < count; i++) {
-      const t = (i * 0.618) % 1
-      const p = new THREE.Vector3(...pts[Math.min(pts.length - 1, Math.floor(t * pts.length))])
-      const n = p.clone().setZ(0).normalize()
-      p.addScaledVector(n, thick * 0.9).setZ(p.z + (((i * 37) % 7) / 7 - 0.5) * thick)
-      b.add('matte', new THREE.SphereGeometry(R * 0.018, 5, 4), { color: '#3a2a22', position: p.toArray() as V3 })
+      const t = 0.12 + ((i * 0.618) % 1) * 0.8
+      const idx = Math.min(pts.length - 1, Math.floor(t * pts.length))
+      const r = thick * (1 - 0.8 * (idx / (pts.length - 1)))
+      const p = new THREE.Vector3(...pts[idx])
+      const n = p.clone().normalize()
+      const lean = (((i * 37) % 7) / 7 - 0.5) * 1.2
+      p.addScaledVector(n, r * Math.sin(lean)).setZ(r * Math.cos(lean) * 0.95)
+      b.add('matte', new THREE.SphereGeometry(R * 0.016, 5, 4), { color: '#33241d', position: p.toArray() as V3 })
     }
   }
   return { parts: b.build({ groundAO: false }), yolk }
@@ -135,13 +144,16 @@ function Egg({ egg, slot }: { egg: NurseryEgg; slot: number }) {
   const stage = Math.min(STAGES - 1, Math.floor(progress * STAGES))
   // Rebuilt only when the baby reaches a new stage, not every tick of its timer.
   const { defId, inheritance } = egg
+  // Remember where this egg is, so its baby can swim out of it.
+  rememberEggSpot(egg.id, [x, floorHeightAt(x, z) + R, z])
   const embryo = useMemo(() => {
     const def = inheritedDefinition({ defId, inheritance })
     return def ? buildEmbryo(def, stage) : null
   }, [defId, inheritance, stage])
   useEffect(() => () => embryo?.parts.forEach((p) => p.geometry.dispose()), [embryo])
   const [phase] = useState(() => (hashString(egg.id) % 100) / 16)
-  const tilt = useMemo(() => [((hashString(egg.id) % 9) - 4) * 0.12, (hashString(`${egg.id}y`) % 628) / 100, 0] as V3, [egg.id])
+  // Mostly facing the glass, so you can see the baby (never edge-on).
+  const tilt = useMemo(() => [((hashString(egg.id) % 9) - 4) * 0.06, ((hashString(`${egg.id}y`) % 90) / 100 - 0.45), ((hashString(`${egg.id}z`) % 628) / 100)] as V3, [egg.id])
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime + phase
@@ -153,7 +165,7 @@ function Egg({ egg, slot }: { egg: NurseryEgg; slot: number }) {
       eggRef.current.position.y = floorHeightAt(x, z) + R * 0.98 + Math.sin(t * 0.9) * 0.003
     }
     if (embryoRef.current) {
-      embryoRef.current.rotation.z = Math.sin(t * (ready ? 3 : 0.5)) * (ready ? 0.25 : 0.08)
+      embryoRef.current.rotation.z = tilt[2] + Math.sin(t * (ready ? 3 : 0.5)) * (ready ? 0.25 : 0.08)
       embryoRef.current.rotation.y = tilt[1] + Math.sin(t * 0.35) * 0.15
     }
   })

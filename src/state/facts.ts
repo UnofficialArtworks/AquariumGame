@@ -36,5 +36,8 @@ export const FISH_FACTS: Record<string, string> = {
   'starry-pleco': 'Plecos have a sucker mouth that lets them cling to rocks and scrape off algae.',
   'sea-turtle': 'Sea turtles swim back to the very beach where they hatched to lay their own eggs.',
   'emperor-angelfish': 'Young emperor angelfish are blue with white rings, and change to stripes as they grow up.',
+  'comet-goldfish': 'Comet goldfish were first bred in America in the 1800s, from ordinary pond goldfish.',
+  'golden-orfe': 'Golden orfes swim near the surface in groups and love to snap up insects that land on the water.',
+  'butterfly-koi': 'Butterfly koi have long, flowing fins that keep growing for years as the fish gets older.',
   'dragon-koi': 'An old legend says a koi that swims up a great waterfall becomes a dragon. This one made it!',
 }

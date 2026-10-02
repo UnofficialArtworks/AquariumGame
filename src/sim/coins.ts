@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { Habitat } from '../state/types'
 import { waterLevel } from '../scene/TankBounds'
 import { useGameStore } from '../state/useGameStore'
 import { useUIStore } from '../state/useUIStore'
@@ -8,7 +9,7 @@ import { sfx } from '../audio/sfx'
 import { addRipple } from './ripples'
 
 export interface CoinBubble {
-  habitat: 'main' | 'nursery'
+  habitat: Habitat
   uid: number
   position: THREE.Vector3
   value: number

@@ -24,10 +24,11 @@ import { AlgaeGlass } from './cleaning/AlgaeGlass'
 import { WasteLayer } from './cleaning/WasteLayer'
 import { CleaningTools } from './cleaning/CleaningTools'
 import { useUIStore } from '../state/useUIStore'
-import { NURSERY_DECORATIONS } from './nurseryLayout'
+import { NURSERY_DECORATIONS, POND_DECORATIONS } from './nurseryLayout'
 import { NurseryEggs } from './creatures/NurseryEggs'
 import { StandVisual } from './stands/StandVisual'
 import { Visitors } from './visitors/Visitors'
+import { PondGarden } from './pond/PondGarden'
 
 export function TankScene() {
   const placedDecorations = useGameStore((s) => s.placedDecorations)
@@ -37,7 +38,9 @@ export function TankScene() {
   const decorating = useUIStore((s) => s.mode === 'decorate')
   const activeTank = useUIStore((s) => s.activeTank)
   const nursery = activeTank === 'nursery'
-  const decorations = nursery ? NURSERY_DECORATIONS : placedDecorations
+  const main = activeTank === 'main'
+  const pond = activeTank === 'pond'
+  const decorations = nursery ? NURSERY_DECORATIONS : main ? placedDecorations : POND_DECORATIONS
 
   return (
     <>
@@ -46,19 +49,26 @@ export function TankScene() {
       <CameraRig />
       <SceneEnvironment />
       <Lighting />
-      <Room />
-      <Background backgroundId={nursery ? 'bubblegum-dream' : backgroundId} />
-      <TankContainer />
-      <StandVisual standId={standId} />
-      <Gravel />
-      <WaterSurface />
-      <GodRays />
+      {pond ? (
+        // The Koi Pond is an outdoor garden pond, not a glass tank.
+        <PondGarden />
+      ) : (
+        <>
+          <Room />
+          <Background backgroundId={nursery ? 'bubblegum-dream' : backgroundId} />
+          <TankContainer />
+          <StandVisual standId={standId} />
+        </>
+      )}
+      <Gravel substrateId={pond ? 'river-pebbles' : undefined} />
+      <WaterSurface pond={pond} />
+      {!pond && <GodRays />}
       <Particles />
-      {!nursery && <AlgaeGlass />}
-      {!nursery && <WasteLayer />}
-      {decorating && !nursery && <DragSurface />}
+      {main && <AlgaeGlass />}
+      {main && <WasteLayer />}
+      {decorating && main && <DragSurface />}
       <TankInteraction />
-      {!nursery && <CleaningTools />}
+      {main && <CleaningTools />}
       {nursery && <NurseryEggs />}
       {decorations.map((instance) => (
         <DecorationEntity key={instance.id} instance={instance} />
@@ -66,7 +76,7 @@ export function TankScene() {
       {ownedFish.filter((fish) => (fish.habitat ?? 'main') === activeTank).map((instance) => (
         <FishEntity key={instance.id} instance={instance} />
       ))}
-      {!nursery && <Visitors />}
+      {main && <Visitors />}
       <FishEyesRenderer />
       <FoodRenderer />
       <CoinRenderer />

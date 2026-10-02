@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { FishDefinition, FishInstance } from '../../state/types'
@@ -13,6 +13,7 @@ import { statusTexture, type StatusIcon } from './statusIcons'
 import type { FishAgent } from '../../sim/world'
 import { simClock } from '../../sim/world'
 import { sfx } from '../../audio/sfx'
+import { hatchStart } from '../../sim/hatching'
 import { hasPersonality, tryPet } from '../../state/personality'
 import { spawnPopup } from '../../sim/popups'
 import { spawnCoinBubble } from '../../sim/coins'
@@ -148,7 +149,15 @@ export function CreatureOverlay({
 
 function SwimmingFish({ instance, def }: { instance: FishInstance; def: FishDefinition }) {
   const { groupRef, agentRef } = useFishBrain(instance.id, def, { sizeScale: instance.sizeScale })
-  const [startPosition] = useState(randomStartPosition)
+  // A fresh hatchling starts inside its egg and darts up out of it.
+  const [fromEgg] = useState(() => hatchStart(instance))
+  const [startPosition] = useState(() => fromEgg ?? randomStartPosition())
+  useEffect(() => {
+    const agent = agentRef.current
+    if (!fromEgg || !agent) return
+    agent.startle = 0.9
+    agent.startleFrom.set(fromEgg[0], fromEgg[1] - 0.4, fromEgg[2])
+  }, [fromEgg, agentRef])
   const hungerRef = useRef(0)
   useFrame(() => {
     hungerRef.current = useGameStore.getState().fishVitals[instance.id]?.hunger ?? 0

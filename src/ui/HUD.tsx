@@ -5,18 +5,20 @@ import { useUIStore, type DockTab } from '../state/useUIStore'
 import { levelFromXp, MAX_LEVEL } from '../state/progression'
 import { getFishDef } from '../scene/fish/fishDefinitions'
 import { inheritedDefinition } from '../state/nursery'
-import { firstNewShopCategory, friendshipReady, newHatchlings, transferProblem } from '../state/rules'
+import { firstNewShopCategory, friendshipReady, newHatchlings, transferProblem, moveTargets, tankName, TANK_LABELS, POND_LEVEL } from '../state/rules'
 import { getMorph, speciesLabel } from '../state/morphs'
 import { getFoodDef } from '../scene/food/foodDefinitions'
 import { getDecorationDef } from '../scene/decorations/decorationDefinitions'
-import type { FishInstance } from '../state/types'
+import type { FishInstance, Habitat } from '../state/types'
 import { algaeCoverage } from '../sim/algae'
 import { savePhoto } from './photo'
 import { Button } from './components/Button'
 import { getVisitor, visitorName } from '../state/visitors'
 import { ShareTank } from './ShareTank'
+import { Fishing } from './Fishing'
 import { hasFavorite, hasPersonality, personalityOf, SCHOOL_SIZE, schoolSize, TRAITS } from '../state/personality'
 import { hasPatterns, patternName } from '../state/patterns'
+import { crewJobFor, crewJobsDone, JOBS, TIP_EVERY, type CrewJob } from '../sim/crew'
 import { beautyOf } from '../state/beauty'
 import { endVisit } from '../app/visit'
 import { Coin, CoinText, Glyph } from './Coin'
@@ -106,7 +108,8 @@ function TankSwitch() {
   useEffect(() => {
     if (activeTank === 'nursery') useGameStore.getState().markNurserySeen()
   }, [activeTank, hatchlings])
-  const go = (tank: 'main' | 'nursery') => {
+  const pondOpen = useGameStore((s) => levelFromXp(s.xp).level >= POND_LEVEL)
+  const go = (tank: Habitat) => {
     const ui = useUIStore.getState()
     if (ui.activeTank === tank) return
     ui.setActiveTank(tank)
@@ -128,6 +131,11 @@ function TankSwitch() {
           eggs > 0 && <em className="pip" title={`${eggs} egg${eggs === 1 ? '' : 's'}`}>{eggs}</em>
         )}
       </button>
+      {pondOpen && (
+        <button role="tab" aria-selected={activeTank === 'pond'} className={activeTank === 'pond' ? 'is-active' : ''} onClick={() => go('pond')} title="The Koi Pond">
+          <span aria-hidden>🪷</span> Pond
+        </button>
+      )}
     </div>
   )
 }
@@ -314,6 +322,26 @@ function CareGauges() {
 
 // --- selected fish -----------------------------------------------------------------
 
+/** A cleanup crew member's job and how much it has done. */
+function CrewJobLine({ fishId, job }: { fishId: string; job: CrewJob }) {
+  // The card re-renders as vitals tick, which keeps this count fresh.
+  const jobs = crewJobsDone(fishId)
+  const info = JOBS[job]
+  return (
+    <div className="pop-character">
+      <p>
+        <span className="trait-chip">
+          {info.icon} {info.name}
+        </span>{' '}
+        {info.text} Every {TIP_EVERY} jobs earn a coin tip.
+      </p>
+      <p>
+        ✅ <strong>{jobs}</strong> {jobs === 1 ? 'job' : 'jobs'} done since you opened the game.
+      </p>
+    </div>
+  )
+}
+
 /** Trait, favourites and school: what makes this fish itself. */
 function FishCharacter({ fish }: { fish: FishInstance }) {
   const c = personalityOf(fish.id)
@@ -370,7 +398,7 @@ function FishInfoCard() {
   const morph = getMorph(fish.inheritance?.morph)
   const hunger = vitals?.hunger ?? 0
   const growth = vitals?.growth ?? 0
-  const destination = fish.habitat === 'nursery' ? 'main' : 'nursery'
+  const targets = moveTargets(useGameStore.getState(), fish)
   const price = salePrice(fish.id)
   const grown = growth >= 1
   return (
@@ -408,7 +436,8 @@ function FishInfoCard() {
         </p>
       )}
       <p className="pop-desc">{def.description}</p>
-      {fish.habitat === 'main' && hasPersonality(species) && <FishCharacter fish={fish} />}
+      {fish.habitat === 'main' && crewJobFor(species) && <CrewJobLine fishId={fish.id} job={crewJobFor(species)!} />}
+      {fish.habitat !== 'nursery' && hasPersonality(species) && <FishCharacter fish={fish} />}
       {def.appetite > 0 && (
         <div className="pop-meter">
           <span>Tummy</span>
@@ -429,20 +458,23 @@ function FishInfoCard() {
         <Button variant={followFish ? 'primary' : 'secondary'} onClick={() => setFollowFish(!followFish)}>
           {followFish ? '✓ Following' : '🎥 Follow'}
         </Button>
-        <Button
-          disabled={busy}
-          title={busy ? 'Wait for this friendship visit to finish' : undefined}
-          onClick={() => {
-            const problem = transferProblem(useGameStore.getState(), fish.id, destination)
-            if (problem) pushToast(problem, 'warn')
-            else if (transferFish(fish.id, destination)) {
-              selectFish(null)
-              pushToast(`${fish.name} moved to ${destination === 'nursery' ? 'the nursery' : 'your aquarium'}`, 'success', '🐠')
-            }
-          }}
-        >
-          {destination === 'nursery' ? '🫧 Nursery' : '🐠 Aquarium'}
-        </Button>
+        {targets.map((destination) => (
+          <Button
+            key={destination}
+            disabled={busy}
+            title={busy ? 'Wait for this friendship visit to finish' : `Move ${fish.name} to ${tankName(destination)}`}
+            onClick={() => {
+              const problem = transferProblem(useGameStore.getState(), fish.id, destination)
+              if (problem) pushToast(problem, 'warn')
+              else if (transferFish(fish.id, destination)) {
+                selectFish(null)
+                pushToast(`${fish.name} moved to ${tankName(destination)}`, 'success', TANK_LABELS[destination].icon)
+              }
+            }}
+          >
+            {TANK_LABELS[destination].icon} {TANK_LABELS[destination].label}
+          </Button>
+        ))}
         <Button onClick={() => setConfirmSell(true)}>👋 Goodbye</Button>
       </div>
       {confirmSell && (
@@ -649,6 +681,7 @@ export function HUD() {
       <Fishpedia />
       <Goals />
       <ShareTank />
+      <Fishing />
     </div>
   )
 }

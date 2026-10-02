@@ -12,6 +12,7 @@ import { hashString } from '../../utils/rng'
 import type { FishAgent } from '../../sim/world'
 import { useGameStore } from '../../state/useGameStore'
 import { sizeForGrowth } from '../../state/economy'
+import { crewDidWork } from '../../sim/crew'
 
 function buildSnail(def: FishDefinition) {
   const b = new MeshBuilder()
@@ -49,6 +50,8 @@ function buildSnail(def: FishDefinition) {
 }
 
 const SPEED = 0.07
+/** Algae (in cells) a snail polishes away per job. */
+const POLISH_PER_JOB = 3
 
 /** Shell and body model without the glass-crawling or algae-eating simulation.
  */
@@ -70,6 +73,7 @@ export function SnailVisual({ def }: { def: FishDefinition }) {
 export function SnailEntity({ instance, def }: { instance: FishInstance; def: FishDefinition }) {
   const groupRef = useRef<THREE.Group>(null)
   const agentRef = useRef<FishAgent | null>(null)
+  const polished = useRef(0)
   const state = useRef({
     s: (hashString(instance.id) % 1000) / 1000 * PERIMETER,
     y: 0.6,
@@ -129,7 +133,14 @@ export function SnailEntity({ instance, def }: { instance: FishInstance; def: Fi
     basis.q.setFromRotationMatrix(basis.m)
     g.quaternion.slerp(basis.q, Math.min(1, dt * 3))
 
-    if ((instance.habitat ?? 'main') === 'main') scrubAlgae(st.s, st.y, 0.16, dt * 0.35)
+    if ((instance.habitat ?? 'main') === 'main') {
+      // Every bit of glass it polishes counts toward its next job.
+      polished.current += scrubAlgae(st.s, st.y, 0.16, dt * 0.35)
+      if (polished.current >= POLISH_PER_JOB) {
+        polished.current -= POLISH_PER_JOB
+        crewDidWork(instance.id, def, g.position)
+      }
+    }
     g.scale.setScalar(sizeForGrowth(useGameStore.getState().fishVitals[instance.id]?.growth ?? 0, instance.sizeScale ?? 1))
   })
 

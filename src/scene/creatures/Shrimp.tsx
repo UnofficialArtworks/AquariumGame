@@ -15,6 +15,8 @@ import { obstacles, type FishAgent } from '../../sim/world'
 import { shade } from '../../utils/color'
 import { randomRange } from '../../utils/math'
 import { sizeForGrowth } from '../../state/economy'
+import { crewDidWork } from '../../sim/crew'
+import { hatchStart } from '../../sim/hatching'
 
 function buildShrimp(def: FishDefinition) {
   const b = new MeshBuilder()
@@ -92,7 +94,10 @@ export function ShrimpVisual({ def }: { def: FishDefinition }) {
 export function ShrimpEntity({ instance, def }: { instance: FishInstance; def: FishDefinition }) {
   const groupRef = useRef<THREE.Group>(null)
   const agentRef = useRef<FishAgent | null>(null)
-  const [start] = useState(() => new THREE.Vector3(randomRange(-2.5, 2.5), 0, randomRange(-1, 1)))
+  const [start] = useState(() => {
+    const egg = hatchStart(instance)
+    return egg ? new THREE.Vector3(egg[0], 0, egg[2]) : new THREE.Vector3(randomRange(-2.5, 2.5), 0, randomRange(-1, 1))
+  })
   const brain = useRef({ target: start.clone(), wasteId: null as string | null, retarget: 0, nibble: 0, hop: 0, heading: 0 })
 
   useFrame((_, rawDelta) => {
@@ -154,12 +159,16 @@ export function ShrimpEntity({ instance, def }: { instance: FishInstance; def: F
         b.nibble = 0
         if (b.wasteId) {
           const removed = useGameStore.getState().removeWaste([b.wasteId])
-          if (removed) emitSparks(pos.clone().setY(pos.y + 0.05), 5, '#c9a86a', { speed: 0.3, size: 0.8, life: 0.6 })
+          if (removed) {
+            emitSparks(pos.clone().setY(pos.y + 0.05), 5, '#c9a86a', { speed: 0.3, size: 0.8, life: 0.6 })
+            crewDidWork(instance.id, def, pos)
+          }
         } else {
           const food = foodItems.find((f) => f.habitat === (instance.habitat ?? 'main') && f.state === 'resting' && !f.inedible && f.position.distanceTo(pos) < 0.25)
           if (food) {
             removeFood(food)
             useGameStore.getState().fishAte(instance.id, food.def.id)
+            crewDidWork(instance.id, def, pos)
           }
         }
         b.retarget = 0

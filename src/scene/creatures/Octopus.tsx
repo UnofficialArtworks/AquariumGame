@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { hatchStart } from '../../sim/hatching'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
@@ -209,7 +210,8 @@ export function OctopusVisual({ def, agentRef, seed = 0 }: { def: FishDefinition
 
 export function OctopusEntity({ instance, def }: { instance: FishInstance; def: FishDefinition }) {
   const { groupRef, agentRef } = useFishBrain(instance.id, def, { orientation: 'yaw', sizeScale: instance.sizeScale })
-  const [start] = useState<[number, number, number]>(() => [
+  // A fresh hatchling starts inside its egg.
+  const [start] = useState<[number, number, number]>(() => hatchStart(instance) ?? [
     randomRange(-INTERIOR_HALF_WIDTH + 0.7, INTERIOR_HALF_WIDTH - 0.7),
     0.5,
     randomRange(-INTERIOR_HALF_DEPTH + 0.5, INTERIOR_HALF_DEPTH - 0.5),

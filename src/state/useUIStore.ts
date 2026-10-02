@@ -1,8 +1,9 @@
 import { create } from 'zustand'
+import type { Habitat } from './types'
 import type { ShopCategory } from './rules'
 import { nightLevel, type NightOverride } from '../sim/daylight'
 
-export type ModalId = 'shop' | 'help' | 'fishpedia' | 'goals' | 'share' | null
+export type ModalId = 'shop' | 'help' | 'fishpedia' | 'goals' | 'share' | 'fishing' | null
 /** Shop drawer tabs: one per shop category. */
 export type ShopTab = ShopCategory
 export type AppMode = 'view' | 'feed' | 'clean' | 'decorate'
@@ -55,9 +56,9 @@ export interface ActiveVisit {
 }
 
 interface UIState {
-  activeTank: 'main' | 'nursery'
+  activeTank: Habitat
   cleanCameraMode: boolean
-  setActiveTank: (tank: 'main' | 'nursery') => void
+  setActiveTank: (tank: Habitat) => void
   setCleanCameraMode: (enabled: boolean) => void
   mode: AppMode
   draggingId: string | null

@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { Habitat } from '../state/types'
 import { getFoodDef, type FoodDefinition } from '../scene/food/foodDefinitions'
 import { clampToInterior, floorHeightAt, waterLevel } from '../scene/TankBounds'
 import { useGameStore } from '../state/useGameStore'
@@ -6,7 +7,7 @@ import { useUIStore } from '../state/useUIStore'
 import { addRipple } from './ripples'
 
 export interface FoodItem {
-  habitat: 'main' | 'nursery'
+  habitat: Habitat
   uid: number
   def: FoodDefinition
   /** Fish poop falls through the same system but is never eaten. */

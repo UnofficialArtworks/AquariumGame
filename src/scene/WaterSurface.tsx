@@ -26,6 +26,7 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uWaterColor;
   uniform float uNight;
   uniform float uMurk;
+  uniform float uPond;
   uniform vec4 uRipples[${MAX_RIPPLES}];
   varying vec3 vWorld;
 
@@ -66,10 +67,11 @@ const fragmentShader = /* glsl */ `
       // Seen from above: tinted, fresnel sky reflection, glints.
       float fres = pow(clamp(1.0 - dot(n, viewDir), 0.0, 1.0), 3.0);
       vec3 sky = mix(vec3(0.75, 0.92, 1.0), vec3(0.15, 0.2, 0.45), uNight);
-      col = mix(uWaterColor * 0.9, sky, 0.35 + fres * 0.5);
+      // A garden pond seen from above is much clearer: less sky, more see-through.
+      col = mix(uWaterColor * 0.9, sky, (0.35 + fres * 0.5) * mix(1.0, 0.4, uPond));
       float spec = pow(max(dot(reflect(-sunDir, n), viewDir), 0.0), 180.0);
       col += spec * mix(vec3(3.0), vec3(0.8, 0.9, 2.0), uNight);
-      alpha = 0.28 + fres * 0.45;
+      alpha = mix(0.28 + fres * 0.45, 0.08 + fres * 0.38, uPond);
     } else {
       // Seen from below: the bright, rippling mirror of total internal reflection.
       vec3 nb = -n;
@@ -85,8 +87,11 @@ const fragmentShader = /* glsl */ `
   }
 `
 
-/** Wavy water surface plus thin bright meniscus lines where water meets glass. */
-export function WaterSurface() {
+/**
+ * Wavy water surface plus thin bright meniscus lines where water meets glass.
+ * In the Koi Pond there's no glass: the surface reaches out under the lawn's edge.
+ */
+export function WaterSurface({ pond = false }: { pond?: boolean }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const meniscusRef = useRef<THREE.Group>(null)
 
@@ -103,6 +108,7 @@ export function WaterSurface() {
           uWaterColor: aquaUniforms.uWaterColor,
           uNight: { value: 0 },
           uMurk: { value: 0 },
+          uPond: { value: 0 },
           uRipples: { value: rippleData },
         },
       }),
@@ -117,6 +123,7 @@ export function WaterSurface() {
   useFrame(() => {
     material.uniforms.uNight.value = atmosphere.night
     material.uniforms.uMurk.value = atmosphere.murk
+    material.uniforms.uPond.value = pond ? 1 : 0
     if (meshRef.current) meshRef.current.position.y = waterLevel.current
     if (meniscusRef.current) meniscusRef.current.position.y = waterLevel.current
     meniscusMaterial.opacity = 0.45 - atmosphere.night * 0.3
@@ -126,9 +133,13 @@ export function WaterSurface() {
   return (
     <group>
       <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]} material={material} renderOrder={5}>
-        <planeGeometry args={[TANK_WIDTH - GLASS_THICKNESS, TANK_DEPTH - GLASS_THICKNESS, 96, 48]} />
+        {pond ? (
+          <planeGeometry args={[TANK_WIDTH + 1.6, TANK_DEPTH + 1.6, 112, 64]} />
+        ) : (
+          <planeGeometry args={[TANK_WIDTH - GLASS_THICKNESS, TANK_DEPTH - GLASS_THICKNESS, 96, 48]} />
+        )}
       </mesh>
-      <group ref={meniscusRef}>
+      <group ref={meniscusRef} visible={!pond}>
         <mesh position={[0, 0, HALF_DEPTH - inset]} material={meniscusMaterial} renderOrder={6}>
           <boxGeometry args={[TANK_WIDTH - 0.1, 0.035, 0.005]} />
         </mesh>

@@ -132,6 +132,8 @@ export interface AquaPatchOptions {
   /** GLSL run after begin_vertex; may modify `transformed`. */
   vertexHook?: string
   uniforms?: Record<string, THREE.IUniform>
+  /** Only light upward-facing surfaces with caustics (steep pond banks would show long stretched streaks). */
+  causticsFacingUp?: boolean
 }
 
 /**
@@ -163,7 +165,7 @@ export function patchAquaShader(shader: THREE.WebGLProgramParametersWithUniforms
     .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>${glow}\n${options.fragmentColorHook ?? ''}`)
     .replace(
       '#include <lights_fragment_begin>',
-      `float aquaCausticFactor = mix(1.0, 0.62 + aquaCaustics(vAquaWorldPos) * 1.9, uCausticStrength);\n${LIGHTS_BEGIN_WITH_CAUSTICS}`,
+      `float aquaCausticStrength = uCausticStrength${options.causticsFacingUp ? ' * smoothstep(0.35, 0.8, inverseTransformDirection(normal, viewMatrix).y)' : ''};\nfloat aquaCausticFactor = mix(1.0, 0.62 + aquaCaustics(vAquaWorldPos) * 1.9, aquaCausticStrength);\n${LIGHTS_BEGIN_WITH_CAUSTICS}`,
     )
     .replace('#include <opaque_fragment>', `#include <opaque_fragment>\ngl_FragColor.rgb = aquaApplyWater(gl_FragColor.rgb, vAquaWorldPos);\n${HDR_GUARD}`)
 }

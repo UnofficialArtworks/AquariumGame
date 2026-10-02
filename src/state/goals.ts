@@ -205,6 +205,8 @@ export const TROPHIES: Trophy[] = [
     coins: 1000,
     progress: (s) => fishpediaTotals(s.fishpedia).fullSet,
   },
+  { id: 'crew-200', icon: '🧹', name: 'Hard Workers', text: 'Your cleanup crew finishes 200 jobs', target: 200, coins: 250, progress: stat('crewJobs') },
+  { id: 'angler', icon: '🎣', name: 'Angler', text: 'Reel in 25 catches while fishing', target: 25, coins: 300, progress: stat('fishCaught') },
   { id: 'release-1', icon: '🌊', name: 'Swim Free', text: 'Release a grown fish to the Open Ocean', target: 1, coins: 100, progress: stat('released') },
   { id: 'release-10', icon: '🐬', name: 'Ocean Friend', text: 'Release 10 fish to the Open Ocean', target: 10, coins: 300, progress: stat('released') },
   { id: 'tide-5', icon: '🌅', name: 'High Tide', text: 'Raise the ocean to Tide 5', target: 5, coins: 800, progress: (s) => tideFor(s.stats.released) },

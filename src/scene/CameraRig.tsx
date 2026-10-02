@@ -6,12 +6,17 @@ import * as THREE from 'three'
 import { useUIStore } from '../state/useUIStore'
 import { fishAgents } from '../sim/world'
 import { isCleanupCrew } from './fish/fishDefinitions'
-import { TANK_HEIGHT, TANK_WIDTH } from './TankBounds'
+import { TANK_HEIGHT, TANK_WIDTH, WATER_LINE_Y } from './TankBounds'
 import { screenInsets } from '../ui/screenInsets'
 
 const FOV = 42
 const TARGET_Y = TANK_HEIGHT * 0.42
 const HOME_TARGET = new THREE.Vector3(0, TARGET_Y, 0)
+/** The Koi Pond is looked down into from above, like standing at the edge of a garden pond. */
+const POND_TARGET = new THREE.Vector3(0, WATER_LINE_Y - 1.2, 0.15)
+const POND_POLAR = Math.PI * 0.15
+/** The pond is framed a little closer than the tank. */
+const POND_DISTANCE = 0.9
 const MIN_DISTANCE = 5.4
 /** Gentle "screensaver" sway kicks in after this long without input. */
 const IDLE_SECONDS = 40
@@ -42,6 +47,9 @@ export function CameraRig() {
   const intro = useRef(0)
   const lastInput = useRef(performance.now())
   const frame = useRef({ shift: 0, zoom: 1 })
+  const pondView = useUIStore((s) => s.activeTank === 'pond')
+  // Swinging between the tank view and the pond's overhead view.
+  const swing = useRef({ t: 1, fromPos: new THREE.Vector3(), fromTarget: new THREE.Vector3(), pond: false })
   // Relax mode alternates drifting wide with gliding after one fish for a while.
   const tour = useRef<{ fishId: string | null; until: number }>({ fishId: null, until: 0 })
   const followTarget = useMemo(() => new THREE.Vector3(), [])
@@ -76,6 +84,28 @@ export function CameraRig() {
     const dt = Math.min(rawDelta, 0.05)
     keepTankInView(dt)
 
+    // Checked every frame (not in an effect) so a switch made during the fly-in is never missed.
+    const sw = swing.current
+    const wantPond = useUIStore.getState().activeTank === 'pond'
+    if (intro.current >= 1 && wantPond !== sw.pond) {
+      sw.t = 0
+      sw.fromPos.copy(camera.position)
+      sw.fromTarget.copy(controls.target)
+      sw.pond = wantPond
+    }
+    const homeTarget = sw.pond ? POND_TARGET : HOME_TARGET
+    if (intro.current >= 1 && sw.t < 1) {
+      sw.t = Math.min(1, sw.t + dt / 1.4)
+      const k = 1 - Math.pow(1 - sw.t, 3)
+      const end = sw.pond
+        ? new THREE.Vector3(0, Math.cos(POND_POLAR), Math.sin(POND_POLAR)).multiplyScalar(home * POND_DISTANCE).add(POND_TARGET)
+        : new THREE.Vector3(0, TARGET_Y + home * 0.12, home)
+      camera.position.lerpVectors(sw.fromPos, end, k)
+      controls.target.lerpVectors(sw.fromTarget, homeTarget, k)
+      controls.update()
+      return
+    }
+
     // Fly-in on load: sweep from high and far to the home view.
     if (intro.current < 1) {
       intro.current = Math.min(1, intro.current + dt / 2.6)
@@ -102,8 +132,8 @@ export function CameraRig() {
       const dist = camera.position.distanceTo(controls.target)
       const want = Math.max(MIN_DISTANCE, home * 0.62)
       if (dist > want + 0.05) camera.position.lerp(controls.target, (1 - Math.exp(-dt * 1.5)) * (1 - want / dist))
-    } else if (controls.target.distanceToSquared(HOME_TARGET) > 0.0004) {
-      delta.copy(HOME_TARGET).sub(controls.target).multiplyScalar(1 - Math.exp(-dt * 2.5))
+    } else if (controls.target.distanceToSquared(homeTarget) > 0.0004) {
+      delta.copy(homeTarget).sub(controls.target).multiplyScalar(1 - Math.exp(-dt * 2.5))
       controls.target.add(delta)
       camera.position.add(delta)
     }
@@ -113,7 +143,8 @@ export function CameraRig() {
       const az = controls.getAzimuthalAngle()
       controls.setAzimuthalAngle(az + (Math.sin(now / 21) * 0.62 - az) * dt * 0.3)
       const polar = controls.getPolarAngle()
-      controls.setPolarAngle(polar + (1.3 + Math.sin(now / 27) * 0.1 - polar) * dt * 0.3)
+      const restPolar = swing.current.pond ? POND_POLAR + 0.08 : 1.3
+      controls.setPolarAngle(polar + (restPolar + Math.sin(now / 27) * 0.1 - polar) * dt * 0.3)
       const dist = camera.position.distanceTo(controls.target)
       const want = home * (0.92 + Math.sin(now / 33) * 0.07)
       camera.position.lerp(controls.target, (1 - Math.exp(-dt * 0.4)) * (1 - want / dist))
@@ -189,8 +220,8 @@ export function CameraRig() {
         dampingFactor={0.08}
         minDistance={MIN_DISTANCE}
         maxDistance={home * 1.45}
-        minPolarAngle={Math.PI * 0.12}
-        maxPolarAngle={Math.PI * 0.53}
+        minPolarAngle={pondView ? Math.PI * 0.06 : Math.PI * 0.12}
+        maxPolarAngle={pondView ? Math.PI * 0.4 : Math.PI * 0.53}
         minAzimuthAngle={cleaning ? -Infinity : -Math.PI * 0.42}
         maxAzimuthAngle={cleaning ? Infinity : Math.PI * 0.42}
         mouseButtons={{ LEFT: toolInHand ? undefined : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }}

@@ -2,6 +2,7 @@ import type { DailyWishes } from './goals'
 import type { VisitorGift, VisitorLog } from './visitors'
 import type { OceanFish } from './ocean'
 import type { SeasonId } from './seasons'
+import type { FishingDay } from './fishing'
 export type StyleTag = 'neutral' | 'adventure' | 'sparkle' | 'nature' | 'classic' | 'scifi'
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
@@ -34,6 +35,9 @@ export interface DecorationDefinition {
   /** Only sold during this season (yours to keep once bought). */
   season?: SeasonId
 }
+
+/** Which tank a fish lives in. */
+export type Habitat = 'main' | 'nursery' | 'pond'
 
 export type CreatureKind = 'fish' | 'jellyfish' | 'seahorse' | 'axolotl' | 'snail' | 'shrimp' | 'octopus' | 'ray' | 'turtle'
 export type FishZone = 'top' | 'middle' | 'bottom' | 'any'
@@ -75,6 +79,8 @@ export interface FishDefinition {
   turnSpeed: number
   zone: FishZone
   schooling?: boolean
+  /** Pond fish live in the Koi Pond (and the nursery), not the aquarium. */
+  pond?: boolean
   /** Neon/bioluminescent accents that glow at night. */
   glow?: boolean
   coinValue: number
@@ -130,7 +136,7 @@ export interface FishInstance {
   defId: string
   name: string
   bornAt: number
-  habitat: 'main' | 'nursery'
+  habitat: Habitat
   /** Sampled once on arrival or hatching, then kept as this fish grows. */
   sizeScale: number
   inheritance?: FishInheritance
@@ -190,6 +196,10 @@ export interface GameStats {
   giftsOpened: number
   /** Fish released to the Open Ocean. */
   released: number
+  /** Jobs the cleanup crew finished (algae polished, mess tidied). */
+  crewJobs: number
+  /** Things reeled in while fishing. */
+  fishCaught: number
 }
 
 export interface GameSettings {
@@ -239,4 +249,6 @@ export interface GameState {
   ocean: OceanFish[]
   /** The last season that said hello, e.g. 'spooky-seas-2026'. */
   seasonSeen: string
+  /** Today's fishing casts. */
+  fishing: FishingDay
 }

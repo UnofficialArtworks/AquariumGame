@@ -123,7 +123,8 @@ export function progressNursery(s: GameState, seconds: number): NurseryProgress 
   const fishVitals = { ...s.fishVitals }
   const hatched: FishInstance[] = []
   for (const egg of hatchedEggs) {
-    const id = crypto.randomUUID()
+    // The baby keeps its egg's id, so the scene can show it swimming out of that egg.
+    const id = egg.id
     const name = pickFishName(ownedFish.map((f) => f.name))
     const fish: FishInstance = { id, defId: egg.defId, name, bornAt: Date.now() + egg.remainingSeconds * 1000,
       habitat: 'nursery', sizeScale: sampleFishSize(egg.defId), inheritance: egg.inheritance }

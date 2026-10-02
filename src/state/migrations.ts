@@ -15,6 +15,7 @@ import { NO_WISHES, type DailyWishes } from './goals'
 import { getVisitor, MAX_GIFTS, type VisitorGift, type VisitorLog } from './visitors'
 import { MAX_OCEAN_FISH, type OceanFish } from './ocean'
 import { isPattern } from './patterns'
+import { NO_FISHING } from './fishing'
 
 export const CURRENT_SAVE_VERSION = 6
 
@@ -101,6 +102,8 @@ export function createInitialState(): GameState {
       visits: 0,
       giftsOpened: 0,
       released: 0,
+      crewJobs: 0,
+      fishCaught: 0,
     },
     settings: { sound: true, music: true },
     fishpedia: backfillFishpedia({}, ownedFish),
@@ -111,6 +114,7 @@ export function createInitialState(): GameState {
     gifts: [],
     ocean: [],
     seasonSeen: '',
+    fishing: NO_FISHING,
   }
 }
 
@@ -164,7 +168,7 @@ export function sanitize(state: Partial<GameState>): GameState {
     .map((f) => {
       const defId = resolveFishId(f.defId)
       const [min, max] = getFishDef(defId)?.sizeRange ?? [1, 1]
-      return sanitizeInheritance({ ...f, defId, habitat: f.habitat === 'nursery' ? 'nursery' as const : 'main' as const,
+      return sanitizeInheritance({ ...f, defId, habitat: f.habitat === 'nursery' || f.habitat === 'pond' ? f.habitat : 'main' as const,
         sizeScale: Number.isFinite(f.sizeScale) && f.sizeScale >= min && f.sizeScale <= max ? f.sizeScale : 1 })
     })
     .filter((f) => getFishDef(f.defId))
@@ -185,6 +189,8 @@ export function sanitize(state: Partial<GameState>): GameState {
   merged.gifts = sanitizeGifts(state.gifts)
   merged.ocean = sanitizeOcean(state.ocean)
   merged.seasonSeen = typeof state.seasonSeen === 'string' ? state.seasonSeen.slice(0, 40) : ''
+  const fishing = state.fishing
+  merged.fishing = fishing && typeof fishing.day === 'string' && Number.isFinite(fishing.casts) ? { day: fishing.day, casts: Math.max(0, Math.floor(fishing.casts)) } : NO_FISHING
   for (const f of merged.ownedFish) {
     if (!merged.fishVitals[f.id]) merged.fishVitals = { ...merged.fishVitals, [f.id]: freshVitals(0.4) }
   }

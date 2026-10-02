@@ -52,7 +52,7 @@ export function updateAutoFeeder(dt: number, spout: readonly [number, number, nu
   let hungry = false
   let peckish = 0
   for (const f of s.ownedFish) {
-    if (f.habitat === 'nursery' || (getFishDef(f.defId)?.appetite ?? 0) <= 0) continue
+    if (f.habitat !== 'main' || (getFishDef(f.defId)?.appetite ?? 0) <= 0) continue
     const hunger = s.fishVitals[f.id]?.hunger ?? 0
     if (hunger > HUNGRY) hungry = true
     if (hunger > PECKISH) peckish++
