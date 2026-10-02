@@ -75,6 +75,7 @@ export function TankInteraction() {
     const point = e.point.clone()
     startleAt(point)
     sfx.tap()
+    emitSparks(point, 7, '#dff6ff', { speed: 0.5, size: 0.8, life: 0.45 })
     let puffed = false
     for (const a of fishAgents.values()) if (a.puff > 0.9 && a.def.features?.includes('spikes')) puffed = true
     if (puffed) sfx.puff()

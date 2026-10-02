@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ShopCategory } from './rules'
+import { nightLevel, type NightOverride } from '../sim/daylight'
 
 export type ModalId = 'shop' | 'help' | 'fishpedia' | null
 /** Shop drawer tabs: one per shop category. */
@@ -50,7 +51,11 @@ interface UIState {
   dock: DockTab
   trayOpen: boolean
   shopTab: ShopTab
+  /** Whether it's night in the tank right now (the real clock, or the player's pick). */
   night: boolean
+  /** 0 = day, 1 = night: where the scene's lighting is heading. */
+  nightLevel: number
+  nightOverride: NightOverride | null
   cleanTool: CleanTool
   foodId: string
   toasts: Toast[]
@@ -74,6 +79,8 @@ interface UIState {
   openShop: (tab?: ShopTab) => void
   setShopTab: (tab: ShopTab) => void
   toggleNight: () => void
+  /** Re-read the clock; called every second. */
+  syncClock: () => void
   setCleanTool: (tool: CleanTool) => void
   setFoodId: (id: string) => void
   pushToast: (text: string, tone?: ToastTone, icon?: string) => void
@@ -86,6 +93,11 @@ interface UIState {
 }
 
 let toastSeq = 1
+
+function lightsNow(override: NightOverride | null) {
+  const { level, override: live } = nightLevel(override)
+  return { night: level >= 0.5, nightLevel: level, nightOverride: live }
+}
 
 export const useUIStore = create<UIState>()((set, get) => ({
   activeTank: 'main',
@@ -104,7 +116,7 @@ export const useUIStore = create<UIState>()((set, get) => ({
   dock: 'view',
   trayOpen: false,
   shopTab: 'fish',
-  night: false,
+  ...lightsNow(null),
   cleanTool: 'sponge',
   foodId: 'pellets',
   toasts: [],
@@ -153,7 +165,15 @@ export const useUIStore = create<UIState>()((set, get) => ({
     set({ dock: 'shop', trayOpen: true, shopTab: tab ?? s.shopTab })
   },
   setShopTab: (tab) => set({ shopTab: tab }),
-  toggleNight: () => set({ night: !get().night }),
+  toggleNight: () => {
+    const night = !get().night
+    set(lightsNow({ night, phase: nightLevel(null).level >= 0.5 }))
+  },
+  syncClock: () => {
+    const next = lightsNow(get().nightOverride)
+    const s = get()
+    if (next.night !== s.night || next.nightOverride !== s.nightOverride || Math.abs(next.nightLevel - s.nightLevel) > 0.002) set(next)
+  },
   setCleanTool: (tool) => set({ cleanTool: tool }),
   setFoodId: (id) => set({ foodId: id }),
   pushToast: (text, tone = 'info', icon) => {

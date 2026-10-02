@@ -732,3 +732,20 @@ test('fishpedia rewards group a big batch of discoveries into one message', () =
   assert.equal(reward.toasts.length, 1)
   assert.match(reward.toasts[0].text, /4 new Fishpedia entries/)
 })
+
+test('tank lights follow the real clock, and the player can override until the next dawn or dusk', async () => {
+  const { clockNight, nightLevel } = await import('../src/sim/daylight')
+  const at = (h: number, m = 0) => new Date(2026, 9, 2, h, m)
+  assert.equal(clockNight(at(12)), 0)
+  assert.equal(clockNight(at(23)), 1)
+  assert.equal(clockNight(at(3)), 1)
+  assert.ok(clockNight(at(19, 45)) > 0.3 && clockNight(at(19, 45)) < 0.7)
+  assert.ok(clockNight(at(6, 15)) > 0.3 && clockNight(at(6, 15)) < 0.7)
+  // Lights down at noon stays night until the evening, then the clock takes over again.
+  const pick = { night: true, phase: false }
+  assert.deepEqual(nightLevel(pick, at(14)), { level: 1, override: pick })
+  const evening = nightLevel(pick, at(22))
+  assert.deepEqual(evening, { level: 1, override: null })
+  // The game re-checks every second, so the cleared pick doesn't come back next morning.
+  assert.deepEqual(nightLevel(evening.override, at(9)), { level: 0, override: null })
+})

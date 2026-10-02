@@ -170,6 +170,7 @@ export interface GameStats {
 
 export interface GameSettings {
   sound: boolean
+  music: boolean
 }
 
 export interface GameState {

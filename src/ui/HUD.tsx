@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
+import { currentTrackName, nextTrack, subscribeMusic } from '../audio/music'
 import { useGameStore } from '../state/useGameStore'
 import { useUIStore, type DockTab } from '../state/useUIStore'
 import { levelFromXp, MAX_LEVEL } from '../state/progression'
@@ -121,13 +122,28 @@ function TankSwitch() {
   )
 }
 
+let gainSeq = 0
+
 function Coins() {
   const coins = useGameStore((s) => Math.floor(s.currency))
+  // Every coin sound ends up here, so the wallet shows a "+N" for whatever just came in.
+  const [seen, setSeen] = useState(coins)
+  const [gain, setGain] = useState<{ id: number; amount: number } | null>(null)
+  if (coins !== seen) {
+    // Skip the jump when the save loads in.
+    if (coins > seen && performance.now() > 2500) setGain({ id: ++gainSeq, amount: (gain?.amount ?? 0) + coins - seen })
+    setSeen(coins)
+  }
   return (
-    <div className="stat-pill coins" title="Coins">
+    <div className={`stat-pill coins ${gain ? 'is-gaining' : ''}`} title="Coins">
       <Coin className="coin" />
       {/* Re-keyed so the number gives a little hop whenever it changes. */}
       <strong key={coins}>{coins.toLocaleString()}</strong>
+      {gain && (
+        <span key={gain.id} className="coin-gain" aria-hidden onAnimationEnd={() => setGain(null)}>
+          +{gain.amount.toLocaleString()}
+        </span>
+      )}
     </div>
   )
 }
@@ -146,12 +162,57 @@ function Level() {
   )
 }
 
+/** Music and sound effects, each with its own switch. */
+function SoundMenu() {
+  const { sound, music } = useGameStore((s) => s.settings)
+  const setSetting = useGameStore((s) => s.setSetting)
+  const [open, setOpen] = useState(false)
+  const trackName = useSyncExternalStore(subscribeMusic, currentTrackName)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [open])
+  return (
+    <div className="sound-menu" ref={ref}>
+      <button className="icon-btn" onClick={() => setOpen(!open)} aria-expanded={open} title="Music and sound">
+        {sound || music ? '🔊' : '🔇'}
+      </button>
+      {open && (
+        <div className="sound-pop" role="menu">
+          <label className="switch-row">
+            <span>🎵 Music</span>
+            <input type="checkbox" role="switch" checked={music} onChange={() => setSetting('music', !music)} />
+          </label>
+          {music && (
+            <div className="now-playing">
+              <span>
+                <small>Now playing</small>
+                {trackName}
+              </span>
+              <button className="icon-btn icon-btn-sm" onClick={nextTrack} title="Next track" aria-label="Next track">
+                ⏭
+              </button>
+            </div>
+          )}
+          <label className="switch-row">
+            <span>🔔 Sound effects</span>
+            <input type="checkbox" role="switch" checked={sound} onChange={() => setSetting('sound', !sound)} />
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TopActions() {
   const night = useUIStore((s) => s.night)
   const toggleNight = useUIStore((s) => s.toggleNight)
   const news = useUIStore((s) => s.fishpediaNews)
-  const sound = useGameStore((s) => s.settings.sound)
-  const setSetting = useGameStore((s) => s.setSetting)
   const pushToast = useUIStore((s) => s.pushToast)
   const photo = async () => {
     const dataUrl = await requestPhoto()
@@ -171,12 +232,10 @@ function TopActions() {
         📖
         {news > 0 && <span className="icon-badge">{news > 9 ? '9+' : news}</span>}
       </button>
-      <button className="icon-btn" onClick={toggleNight} aria-pressed={night} title={night ? 'Switch to day' : 'Switch to night'}>
+      <button className="icon-btn" onClick={toggleNight} aria-pressed={night} title={night ? 'Lights on (until the clock reaches morning or evening)' : 'Lights down for the night (until the clock reaches morning or evening)'}>
         {night ? '☀️' : '🌙'}
       </button>
-      <button className="icon-btn" onClick={() => setSetting('sound', !sound)} aria-pressed={!sound} title={sound ? 'Mute sound' : 'Turn sound on'}>
-        {sound ? '🔊' : '🔇'}
-      </button>
+      <SoundMenu />
       <button className="icon-btn" onClick={photo} title="Save a photo of your aquarium">
         📸
       </button>

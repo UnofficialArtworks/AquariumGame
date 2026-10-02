@@ -88,7 +88,7 @@ export function createInitialState(): GameState {
       coinsCollected: 0,
       fishBought: 0,
     },
-    settings: { sound: true },
+    settings: { sound: true, music: true },
     fishpedia: backfillFishpedia({}, ownedFish),
     seen: { shopLevel: 1, nurseryAt: now },
   }

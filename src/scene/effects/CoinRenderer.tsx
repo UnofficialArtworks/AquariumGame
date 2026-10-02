@@ -5,7 +5,7 @@ import { coinBubbles, collectCoinBubble, MAX_COINS } from '../../sim/coins'
 import { useUIStore } from '../../state/useUIStore'
 import coinUrl from '../../assets/coin.svg'
 
-const coinGeometry = new THREE.CylinderGeometry(0.06, 0.06, 0.016, 24).rotateX(Math.PI / 2)
+const coinGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.02, 24).rotateX(Math.PI / 2)
 const edgeMaterial = new THREE.MeshStandardMaterial({
   color: '#ffc93d',
   metalness: 1,
@@ -95,7 +95,7 @@ export function CoinRenderer() {
       coins.setMatrixAt(i, dummy.matrix)
       dummy.rotation.set(0, 0, 0)
       const wobble = 1 + Math.sin(t * 5 + c.phase) * 0.05
-      dummy.scale.set(appear * 0.13 * wobble, appear * 0.13 / wobble, appear * 0.13)
+      dummy.scale.set(appear * 0.17 * wobble, appear * 0.17 / wobble, appear * 0.17)
       dummy.updateMatrix()
       shells.setMatrixAt(i, dummy.matrix)
       uids.current.push(c.uid)

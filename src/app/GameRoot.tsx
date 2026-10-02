@@ -9,10 +9,12 @@ import { HUD } from '../ui/HUD'
 import { growAlgae, saveAlgae } from '../sim/algae'
 import { bonusesFor } from '../state/bonuses'
 import { setSoundEnabled, unlockAudio } from '../audio/sfx'
+import { setMusicEnabled, setMusicMood } from '../audio/music'
 import { PhotoCapture, useAdaptiveDpr } from '../scene/RenderBudget'
 
 export function GameRoot() {
   const sound = useGameStore((s) => s.settings.sound)
+  const music = useGameStore((s) => s.settings.music)
   const scrubbing = useUIStore((s) => s.mode === 'clean' && s.cleanTool === 'sponge' && s.toolActive)
   const { dpr, monitor } = useAdaptiveDpr()
 
@@ -21,6 +23,7 @@ export function GameRoot() {
     const interval = setInterval(() => {
       const s = useGameStore.getState()
       s.tick()
+      useUIStore.getState().syncClock()
       growAlgae(1, s.murk, bonusesFor(s.placedDecorations).algaeRate)
       ticks++
       if (ticks % 10 === 0) saveAlgae()
@@ -43,6 +46,13 @@ export function GameRoot() {
   }, [])
 
   useEffect(() => setSoundEnabled(sound), [sound])
+  useEffect(() => setMusicEnabled(music), [music])
+  useEffect(() => {
+    setMusicMood(() => {
+      const ui = useUIStore.getState()
+      return ui.activeTank === 'nursery' ? 'nursery' : ui.night ? 'night' : 'day'
+    })
+  }, [])
 
   return (
     <div className="game-root" data-scrubbing={scrubbing}>

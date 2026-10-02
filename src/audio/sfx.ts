@@ -7,7 +7,13 @@ let master: GainNode | null = null
 let ambienceGain: GainNode | null = null
 let noiseBuffer: AudioBuffer | null = null
 let enabled = true
-let ambienceTimer: number | null = null
+const unlockListeners: Array<(context: AudioContext) => void> = []
+
+/** Run once audio is allowed (after the first tap), or now if it already is. */
+export function onAudioUnlocked(listener: (context: AudioContext) => void) {
+  if (ctx) listener(ctx)
+  else unlockListeners.push(listener)
+}
 
 function getNoise(context: AudioContext): AudioBuffer {
   if (noiseBuffer) return noiseBuffer
@@ -35,6 +41,7 @@ export function unlockAudio() {
     master.gain.value = enabled ? 0.55 : 0
     master.connect(ctx.destination)
     startAmbience()
+    for (const listener of unlockListeners.splice(0)) listener(ctx)
   } catch {
     ctx = null
   }
@@ -91,8 +98,17 @@ function noise(
 
 let lastScrub = 0
 let lastPop = 0
+let lastBubble = 0
 
 export const sfx = {
+  /** A visible bubble bursting at the surface; bigger bubbles sound deeper. */
+  bubble(radius: number) {
+    const now = performance.now()
+    if (now - lastBubble < 220) return
+    lastBubble = now
+    const base = 1250 - Math.min(radius, 0.12) * 6000 + Math.random() * 200
+    tone(base, 0.07, { endFreq: base * 0.4, volume: 0.035 })
+  },
   pop(pitch = 1) {
     const now = performance.now()
     if (now - lastPop < 30) return
@@ -158,7 +174,7 @@ export const sfx = {
   },
 }
 
-/** Soft filtered-noise hum plus the occasional bubbler blip. */
+/** A soft filtered-noise hum. (Bubble blips play only when a bubble you can see pops: see sim/bubbles.ts.) */
 function startAmbience() {
   const c = ctx
   if (!c || !master) return
@@ -172,10 +188,4 @@ function startAmbience() {
   ambienceGain.gain.value = 0.05
   src.connect(low).connect(ambienceGain).connect(master)
   src.start()
-
-  const blip = () => {
-    if (enabled && Math.random() < 0.8) tone(500 + Math.random() * 700, 0.07, { endFreq: 240, volume: 0.035 })
-    ambienceTimer = window.setTimeout(blip, 350 + Math.random() * 1600)
-  }
-  if (ambienceTimer === null) blip()
 }

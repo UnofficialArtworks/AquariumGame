@@ -28,7 +28,7 @@ export function AtmosphereController() {
     const delta = Math.min(rawDelta, 0.1)
     aquaUniforms.uAquaTime.value = state.clock.elapsedTime
 
-    const nightTarget = useUIStore.getState().night ? 1 : 0
+    const nightTarget = useUIStore.getState().nightLevel
     atmosphere.night = THREE.MathUtils.damp(atmosphere.night, nightTarget, 2.2, delta)
     const murkTarget = useUIStore.getState().activeTank === 'nursery' ? 0 : useGameStore.getState().murk
     atmosphere.murk = THREE.MathUtils.damp(atmosphere.murk, murkTarget, 1.4, delta)

@@ -31,11 +31,11 @@ const bubbleFragment = /* glsl */ `
     // Clamp before pow(): rounding can push the dot product past 1, and
     // pow(negative) is NaN, which bloom smears into a full black frame.
     float f = clamp(1.0 - abs(dot(normalize(vN), normalize(vView))), 0.0, 1.0);
-    float rim = pow(f, 2.4);
+    float rim = pow(f, 2.0);
     vec3 L = normalize(vec3(0.3, 1.0, 0.5));
     float spec = pow(max(dot(reflect(-L, vN), vView), 0.0), 30.0);
-    vec3 col = vTint * (0.25 + rim * 1.25) * (1.0 - uNight * 0.5) + spec * mix(1.6, 0.6, uNight);
-    float a = clamp(rim * 0.8 + spec * 0.9 + 0.04, 0.0, 1.0);
+    vec3 col = vTint * (0.35 + rim * 1.5) * (1.0 - uNight * 0.45) + spec * mix(1.9, 0.8, uNight);
+    float a = clamp(rim * 1.05 + spec + 0.1, 0.0, 1.0);
     gl_FragColor = vec4(col, a);
   }
 `
@@ -67,7 +67,9 @@ export function BubbleRenderer() {
       const b = bubbles[i]
       dummy.position.set(b.x, b.y, b.z)
       const squish = 1 + Math.sin(b.age * 14 + b.phase) * 0.08
-      dummy.scale.set(b.r * squish, b.r / squish, b.r * squish)
+      // Drawn a little larger than they are, with a floor, so even small streams read against the water.
+      const r = Math.max(b.r * 1.25, 0.02)
+      dummy.scale.set(r * squish, r / squish, r * squish)
       dummy.updateMatrix()
       mesh.setMatrixAt(i, dummy.matrix)
       mesh.setColorAt(i, TINTS[b.kind])

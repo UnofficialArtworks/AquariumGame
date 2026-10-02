@@ -36,6 +36,7 @@ function removeAt(index: number) {
 function autoCollect(coin: CoinBubble) {
   useGameStore.getState().collectCoins(coin.value, false)
   if (coin.habitat !== useUIStore.getState().activeTank) return
+  emitSparks(coin.position, 8, '#ffd84a', { speed: 0.7, size: 1, life: 0.6 })
   spawnPopup({ x: coin.position.x, y: coin.position.y + 0.1, z: coin.position.z }, `+${coin.value}`, '#ffe38a')
   sfx.pop(1.3)
 }
