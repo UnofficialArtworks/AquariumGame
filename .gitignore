@@ -25,3 +25,9 @@ dist-ssr
 
 # Generated knowledge graph (graphify)
 graphify-out/
+
+# Internal notes, research and QA captures stay on this machine (the repo is public)
+internal/
+handoff.md
+artifacts/
+.claude/
