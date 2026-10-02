@@ -1,4 +1,5 @@
 import type { DailyWishes } from './goals'
+import type { VisitorGift, VisitorLog } from './visitors'
 export type StyleTag = 'neutral' | 'adventure' | 'sparkle' | 'nature' | 'classic' | 'scifi'
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
@@ -176,6 +177,9 @@ export interface GameStats {
   friendships: number
   hatched: number
   relaxSeconds: number
+  /** Visitors that came by (counting repeat visits). */
+  visits: number
+  giftsOpened: number
 }
 
 export interface GameSettings {
@@ -217,4 +221,8 @@ export interface GameState {
   daily: DailyWishes
   /** Trophy id → when it was earned (ms). */
   trophies: Record<string, number>
+  /** Visitors you've met, and how often they came. */
+  visitors: VisitorLog
+  /** Gifts visitors left on the gravel, waiting to be opened. */
+  gifts: VisitorGift[]
 }

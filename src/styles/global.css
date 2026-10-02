@@ -2905,3 +2905,239 @@ button:disabled {
   font-size: 0.75rem;
   letter-spacing: 1px;
 }
+
+/* --- visitors ------------------------------------------------------------------- */
+
+.visitor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 10px;
+}
+
+.visitor-card {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.visitor-card.is-here {
+  border-color: #ffd24a;
+  box-shadow: 0 0 0 2px rgba(255, 210, 74, 0.25);
+}
+
+.visitor-card .pedia-art {
+  aspect-ratio: 1;
+}
+
+.visitor-copy {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  min-width: 0;
+}
+
+.visitor-copy strong {
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.visitor-card.is-missing .visitor-copy strong {
+  color: var(--ink-faint);
+  letter-spacing: 0.12em;
+}
+
+.visitor-copy p {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.visitor-card.is-missing .visitor-copy p {
+  font-style: italic;
+}
+
+.visitor-copy small {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--ink-faint);
+}
+
+@media (max-width: 520px) {
+  .visitor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .visitor-card {
+    grid-template-columns: 72px 1fr;
+  }
+}
+
+/* --- sharing ---------------------------------------------------------------------- */
+
+.share {
+  display: grid;
+  gap: 12px;
+}
+
+.share p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.share h3 {
+  margin: 8px 0 0;
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.share-link {
+  display: flex;
+  gap: 8px;
+}
+
+.share-link input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ink);
+  font: 700 0.85rem var(--font);
+}
+
+.share-link input:focus {
+  outline: 2px solid rgba(110, 210, 255, 0.6);
+  outline-offset: 1px;
+}
+
+.share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.share-note {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.share-problem {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #ffb4a8;
+}
+
+.visit-bar {
+  grid-template-columns: 1fr auto;
+}
+
+.visit-title {
+  display: grid;
+  gap: 2px;
+  justify-self: start;
+  min-width: 0;
+  padding: 8px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(4, 22, 38, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.visit-title strong {
+  font-size: 1.05rem;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visit-title small {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+
+.visit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .share-link {
+    flex-wrap: wrap;
+  }
+
+  .share-link .btn {
+    flex: 1 1 100%;
+  }
+
+  .visit-bar {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .visit-actions {
+    justify-self: start;
+  }
+}
+
+/* --- fish personality ------------------------------------------------------------- */
+
+.pop-character {
+  display: grid;
+  gap: 5px;
+  margin: 2px 0 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.pop-character p {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.pop-character p.is-happy {
+  color: #ffd1ea;
+}
+
+.pop-character strong {
+  color: var(--ink);
+}
+
+.trait-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  margin-right: 2px;
+  border-radius: 999px;
+  background: rgba(255, 210, 74, 0.16);
+  color: #ffe9a8;
+  font-weight: 900;
+  font-size: 0.72rem;
+}
+
+.pedia-fact {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 210, 74, 0.28);
+  background: rgba(255, 210, 74, 0.08);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.pedia-fact strong {
+  color: #ffe9a8;
+}

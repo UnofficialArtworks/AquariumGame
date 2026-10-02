@@ -140,7 +140,15 @@ interface AlgaeSave {
   d: string
 }
 
+let frozen = false
+
+/** Stop writing algae to storage (while visiting a friend's tank). */
+export function freezeAlgaeSaves() {
+  frozen = true
+}
+
 export function saveAlgae() {
+  if (frozen) return
   try {
     const bytes = new Uint8Array(CELLS)
     for (let i = 0; i < CELLS; i++) bytes[i] = Math.round(grid[i] * 255)

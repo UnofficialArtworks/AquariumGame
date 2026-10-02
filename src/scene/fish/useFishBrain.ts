@@ -34,6 +34,8 @@ import { randomRange } from '../../utils/math'
 import { hashString, mulberry32 } from '../../utils/rng'
 import { useUIStore } from '../../state/useUIStore'
 import { bonusesFor } from '../../state/bonuses'
+import { moodBonus, personalityOf, type Personality as Character } from '../../state/personality'
+import { getDecorationDef } from '../decorations/decorationDefinitions'
 
 /** Vertical band a fish prefers, as [min, max] world Y. */
 function zoneBand(def: FishDefinition): [number, number] {
@@ -70,6 +72,55 @@ function pickWanderTarget(def: FishDefinition, out: THREE.Vector3) {
     out.set(spot.x + randomRange(-0.35, 0.35), spot.y + randomRange(0.25, 0.6), spot.z + randomRange(-0.35, 0.35))
   }
   return out
+}
+
+/** Visitors stay close to whatever they came to see. */
+function pickHomeTarget(def: FishDefinition, home: THREE.Vector3, out: THREE.Vector3) {
+  const [lo, hi] = zoneBand(def)
+  const [x, z] = clampToInterior(home.x + randomRange(-1.1, 1.1), home.z + randomRange(-0.7, 0.7), 0.4)
+  return out.set(x, THREE.MathUtils.clamp(home.y + randomRange(-0.25, 0.6), lo, Math.max(lo + 0.1, hi)), z)
+}
+
+/** Decorations that send up a bubble stream, for playful fish to play in. */
+const BUBBLY_KINDS = new Set(['airstone', 'volcano', 'diver', 'clam', 'filter', 'fountain'])
+
+/**
+ * Where a fish with a personality wanders next: now and then to its
+ * favourite decoration, and otherwise somewhere that suits its trait.
+ * Returns true when it's heading for its favourite.
+ */
+function pickCharacterTarget(def: FishDefinition, c: Character, main: boolean, out: THREE.Vector3): boolean {
+  const [lo, hi] = zoneBand(def)
+  const placed = main ? useGameStore.getState().placedDecorations : []
+  const roll = Math.random()
+  const favorites = placed.filter((d) => d.defId === c.favoriteDecor)
+  if (favorites.length > 0 && roll < 0.3) {
+    const d = favorites[Math.floor(Math.random() * favorites.length)]
+    const fav = getDecorationDef(d.defId)
+    const reach = (fav?.footprintRadius ?? 0.4) + 0.3
+    const [x, z] = clampToInterior(d.position[0] + randomRange(-reach, reach), d.position[2] + randomRange(-reach, reach), 0.4)
+    const y = floorHeightAt(x, z) + Math.min(fav?.height ?? 1, 2) * randomRange(0.5, 1) + 0.25
+    out.set(x, THREE.MathUtils.clamp(y, lo, Math.max(lo + 0.1, hi)), z)
+    return true
+  }
+  pickWanderTarget(def, out)
+  if (c.trait === 'shy' && roll < 0.65 && obstacles.length > 0) {
+    // Tuck in beside something tall to hide behind.
+    const o = obstacles[Math.floor(Math.random() * obstacles.length)]
+    const angle = Math.random() * Math.PI * 2
+    const [x, z] = clampToInterior(o.x + Math.cos(angle) * (o.r + 0.25), o.z + Math.sin(angle) * (o.r + 0.25), 0.4)
+    out.set(x, THREE.MathUtils.clamp(Math.min(out.y, o.top + 0.2), lo, Math.max(lo + 0.1, hi)), z)
+  } else if (c.trait === 'playful' && roll < 0.5) {
+    const streams = placed.filter((d) => BUBBLY_KINDS.has(getDecorationDef(d.defId)?.kind ?? ''))
+    if (streams.length > 0) {
+      const d = streams[Math.floor(Math.random() * streams.length)]
+      out.x = d.position[0] + randomRange(-0.15, 0.15)
+      out.z = d.position[2] + randomRange(-0.15, 0.15)
+    }
+  } else if (c.trait === 'showoff' && roll < 0.75) {
+    out.z = randomRange(INTERIOR_HALF_DEPTH * 0.15, INTERIOR_HALF_DEPTH - 0.4)
+  }
+  return false
 }
 
 /** Per-species shared wander target so schools travel together. */
@@ -227,6 +278,11 @@ function eat(agent: FishAgent, food: FoodItem, growth: number) {
   const mouth = agent.object.position
   emitSparks(food.position, 5, food.def.color, { speed: 0.35, size: 0.8, life: 0.5, buoyancy: -0.2 })
   sfx.chomp()
+  if (!food.def.unlimited && personalityOf(agent.id).favoriteTreat === food.def.id) {
+    // Its favourite! Extra delight on top of the treat's own effect.
+    agent.effects.hearts = simClock.t + 3
+    spawnPopup(agent.object.position.clone().setY(agent.object.position.y + 0.45), 'Favourite! ♥', '#ff8fc7', true)
+  }
   const effect = food.def.effect
   if (effect === 'none') return
   const until = t + food.def.effectSeconds
@@ -305,7 +361,14 @@ export function useFishBrain(
     orientation = 'full',
     sizeScale = 1,
     locomotion = 'swim',
-  }: { orientation?: 'full' | 'yaw' | 'none'; sizeScale?: number; locomotion?: Locomotion } = {},
+    home,
+  }: {
+    orientation?: 'full' | 'yaw' | 'none'
+    sizeScale?: number
+    locomotion?: Locomotion
+    /** Visitors: wander near here, stay awake, and are always full-grown. */
+    home?: THREE.Vector3
+  } = {},
 ) {
   const groupRef = useRef<THREE.Group>(null)
   const agentRef = useRef<FishAgent | null>(null)
@@ -333,6 +396,9 @@ export function useFishBrain(
     rollVel: 0,
   })
   const quirk = useRef<Personality>(personalityFor(fishId, def))
+  // Visitors are guests passing through; residents have a character of their own.
+  const character = home ? null : personalityOf(fishId)
+  const toFavorite = useRef(false)
 
   useEffect(() => {
     const group = groupRef.current
@@ -352,7 +418,7 @@ export function useFishBrain(
       effort: 0.3,
       bank: 0,
       sleeping: false,
-      size: sizeForGrowth(useGameStore.getState().fishVitals[fishId]?.growth ?? 0, sizeScale),
+      size: sizeForGrowth(home ? 1 : (useGameStore.getState().fishVitals[fishId]?.growth ?? 0), sizeScale),
       food: null,
       bend: 0,
       hover: 0,
@@ -367,13 +433,14 @@ export function useFishBrain(
     agentRef.current = agent
     group.scale.setScalar(agent.size)
     fishAgents.set(fishId, agent)
-    pickWanderTarget(def, wanderTarget.current)
+    if (home) pickHomeTarget(def, home, wanderTarget.current)
+    else pickWanderTarget(def, wanderTarget.current)
     group.userData.fishId = fishId
     return () => {
       claim(agent, null)
       fishAgents.delete(fishId)
     }
-  }, [fishId, def, sizeScale])
+  }, [fishId, def, sizeScale, home])
 
   useFrame((state, rawDelta) => {
     const group = groupRef.current
@@ -387,7 +454,7 @@ export function useFishBrain(
     const ui = useUIStore.getState()
     const vitals = store.fishVitals[fishId]
     const hunger = vitals?.hunger ?? 0
-    const growth = vitals?.growth ?? 0
+    const growth = home ? 1 : (vitals?.growth ?? 0)
     const q = quirk.current
 
     agent.size = THREE.MathUtils.damp(agent.size, sizeForGrowth(growth, sizeScale), 2, dt)
@@ -397,7 +464,7 @@ export function useFishBrain(
     swallow.current = Math.max(0, swallow.current - dt)
 
     const zooming = agent.effects.zoom > t
-    agent.sleeping = atmosphere.night > 0.7 && !def.glow && agent.effects.glow < t && agent.startle <= 0
+    agent.sleeping = !home && atmosphere.night > 0.7 && !def.glow && agent.effects.glow < t && agent.startle <= 0
     const wantsFood = def.appetite > 0 && hunger > HUNGER_FULL_THRESHOLD && !agent.sleeping && agent.startle <= 0
     const feederCalling = wantsFood && ui.activeTank === 'main' && t >= feederCall.from && t < feederCall.until
     const linger = lingerFor(hunger)
@@ -436,7 +503,8 @@ export function useFishBrain(
         } else {
           wanderTimer.current -= dt
           if (wanderTimer.current <= 0 || pos.distanceTo(wanderTarget.current) < 0.3) {
-            pickWanderTarget(def, wanderTarget.current)
+            if (home) pickHomeTarget(def, home, wanderTarget.current)
+            else pickWanderTarget(def, wanderTarget.current)
             wanderTarget.current.y = Math.max(wanderTarget.current.y, floorHeightAt(wanderTarget.current.x, wanderTarget.current.z) + R * 4 + 0.2)
             wanderTimer.current = randomRange(6, 12)
           }
@@ -591,7 +659,7 @@ export function useFishBrain(
         claim(agent, null)
       } else {
         // The hungrier the fish, the harder it goes for food.
-        const chaseSpeed = def.maxSpeed * q.speed * (1.45 + hunger * 1.2) * (zooming ? 1.6 : 1)
+        const chaseSpeed = def.maxSpeed * q.speed * (1.45 + hunger * 1.2) * (zooming ? 1.6 : 1) * (character?.trait === 'greedy' ? 1.25 : 1)
         const bite = biteFor(def)
         const length = def.bodyLength * agent.size
         const mouth = scratchMouth.set(0, -bite.below * length, -bite.ahead * length).applyQuaternion(group.quaternion).add(pos)
@@ -636,8 +704,9 @@ export function useFishBrain(
           gazeWant = 1
         } else {
           const mode = ui.mode
-          const fresh = pointerAttract.active && !agent.sleeping && t - pointerAttract.lastMove < 4
-          const curious = fresh && mode === 'view' && pointerAttract.point.distanceTo(pos) < 3.2
+          const nosy = character?.trait === 'curious'
+          const fresh = pointerAttract.active && !agent.sleeping && t - pointerAttract.lastMove < (nosy ? 8 : 4)
+          const curious = fresh && mode === 'view' && pointerAttract.point.distanceTo(pos) < (nosy ? 6 : 3.2)
           const begging =
             pointerAttract.active &&
             !agent.sleeping &&
@@ -685,9 +754,16 @@ export function useFishBrain(
               hoverTimer.current -= dt
               hovering = true
             } else if (wanderTimer.current <= 0 || pos.distanceTo(wanderTarget.current) < 0.35) {
+              // Made it to its favourite decoration: a happy little heart.
+              if (toFavorite.current && pos.distanceTo(wanderTarget.current) < 0.35) {
+                spawnPopup(scratchB.copy(pos).setY(pos.y + 0.22), '♥', '#ff8fc7')
+                toFavorite.current = false
+              }
               // Sometimes pause for a look around before moving on.
               if (Math.random() < 0.45) hoverTimer.current = randomRange(1, 3.5)
-              pickWanderTarget(def, wanderTarget.current)
+              if (home) pickHomeTarget(def, home, wanderTarget.current)
+              else if (character) toFavorite.current = pickCharacterTarget(def, character, ui.activeTank === 'main', wanderTarget.current)
+              else pickWanderTarget(def, wanderTarget.current)
               wanderTimer.current = randomRange(3, 7)
             }
             target = wanderTarget.current
@@ -843,9 +919,9 @@ export function useFishBrain(
     agent.gazing = THREE.MathUtils.damp(agent.gazing, gazeWant, 5, dt)
 
     // --- side effects: coins, poop, bubbles ---------------------------------
-    if (def.coinValue > 0 && hunger < HUNGER_COIN_CUTOFF && !agent.sleeping) {
+    if (def.coinValue > 0 && hunger < HUNGER_COIN_CUTOFF && !agent.sleeping && !ui.visiting) {
       const dirtiness = store.murk * 1.2 + algaeCoverage() * 0.8 + Math.min(1, store.waste.length / 25) * 0.6
-      const lucky = ui.activeTank === 'main' ? bonusesFor(store.placedDecorations).coinRate : 1
+      const lucky = ui.activeTank === 'main' ? bonusesFor(store.placedDecorations).coinRate * moodBonus(fishId, store.ownedFish, store.placedDecorations) : 1
       coinTimer.current -= (dt * lucky) / (1 + dirtiness)
       if (coinTimer.current <= 0) {
         coinTimer.current = randomRange(COIN_INTERVAL_MIN, COIN_INTERVAL_MAX)

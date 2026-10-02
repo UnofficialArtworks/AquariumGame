@@ -3,12 +3,20 @@ import { DECORATION_CATALOG } from '../scene/decorations/decorationDefinitions'
 import { FISH_CATALOG } from '../scene/fish/fishDefinitions'
 import type { MorphId } from './types'
 
+export type PreviewKind = 'decoration' | 'fish' | 'visitor'
+
 export interface PreviewTarget {
   key: string
-  kind: 'decoration' | 'fish'
+  kind: PreviewKind
+  /** Catalog id (a visitor's id for visitors). */
   defId: string
   /** Fish only: render in a rare morph's colours. */
   morph?: MorphId
+}
+
+/** Thumbnail key for a visitor. */
+export function visitorPreviewKey(id: string): string {
+  return `visitor~${id}`
 }
 
 /** Thumbnail key for a species, or one of its morphs. */

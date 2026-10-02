@@ -10,6 +10,7 @@ import { DECORATION_CATALOG } from '../src/scene/decorations/decorationDefinitio
 import { dropFood, foodItems } from '../src/sim/food'
 import { fishAgents, simClock } from '../src/sim/world'
 import { feederCall, gadgetPulses } from '../src/sim/gadgets'
+import { startVisit, updateVisitors, visitorSpot } from '../src/sim/visitors'
 import '../src/styles/global.css'
 
 useGameStore.persist.setOptions({ storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } })
@@ -174,7 +175,7 @@ function follow(kind: string, index = 0) {
 
 // Feeding stats for QA: how much food got eaten vs rotted.
 const stats = { dropped: 0, eaten: 0, wasted: 0 }
-;(window as unknown as Record<string, unknown>).fishQA = { stats, foodItems, dropFood, fishAgents, useGameStore, useUIStore, feederCall, gadgetPulses, simClock, step, follow, perf, pump, r3f: () => _roots.get(document.querySelector('.tank-canvas canvas') as HTMLCanvasElement)?.store.getState() }
+;(window as unknown as Record<string, unknown>).fishQA = { startVisit, updateVisitors, visitorSpot, stats, foodItems, dropFood, fishAgents, useGameStore, useUIStore, feederCall, gadgetPulses, simClock, step, follow, perf, pump, r3f: () => _roots.get(document.querySelector('.tank-canvas canvas') as HTMLCanvasElement)?.store.getState() }
 const seen = new Set<number>()
 setInterval(() => {
   for (const f of foodItems) if (!f.inedible && !seen.has(f.uid)) {

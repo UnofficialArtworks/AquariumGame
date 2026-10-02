@@ -6,12 +6,14 @@ import { FISH_CATALOG, getFishDef, isCleanupCrew } from '../scene/fish/fishDefin
 import { BRED_COINS, DISCOVERY_XP, FISHPEDIA_MILESTONES, fishpediaTotals, milestoneCoins, MORPH_COINS } from '../state/fishpedia'
 import { MORPHS } from '../state/morphs'
 import { getEggCountRange } from '../state/nursery'
-import { fishPreviewKey, usePreviewStore } from '../state/usePreviewStore'
+import { fishPreviewKey, usePreviewStore, visitorPreviewKey } from '../state/usePreviewStore'
 import type { FishDefinition, FishpediaEntry, Rarity } from '../state/types'
 import { ItemThumbnail } from './ItemThumbnail'
 import { Modal } from './components/Modal'
 import { Button } from './components/Button'
 import { Coin } from './Coin'
+import { canVisit, VISITORS, visitorTotals } from '../state/visitors'
+import { FISH_FACTS } from '../state/facts'
 
 const RARITIES: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary']
 const ZONES: Record<FishDefinition['zone'], string> = {
@@ -24,16 +26,94 @@ const ZONES: Record<FishDefinition['zone'], string> = {
 const BOOK_ORDER = RARITIES.flatMap((r) => FISH_CATALOG.filter((d) => d.rarity === r).sort((a, b) => a.unlockLevel - b.unlockLevel))
 
 type Filter = 'all' | 'found' | 'missing'
+type Book = 'fish' | 'visitors'
 
 /** The collection book: every species and rare morph, silhouettes until you find them. */
 export function Fishpedia() {
   const open = useUIStore((s) => s.activeModal === 'fishpedia')
   const pick = useUIStore((s) => s.fishpediaPick)
+  const [book, setBook] = useState<Book>('fish')
   if (!open) return null
   return (
     <Modal title="📖 Fishpedia" onClose={() => useUIStore.getState().openModal(null)} className="modal-wide">
-      {pick && getFishDef(pick) ? <EntryPage key={pick} defId={pick} /> : <Overview />}
+      {pick && getFishDef(pick) ? (
+        <EntryPage key={pick} defId={pick} />
+      ) : (
+        <>
+          <div className="subtabs goals-tabs" role="tablist">
+            <button role="tab" aria-selected={book === 'fish'} className={`subtab ${book === 'fish' ? 'is-active' : ''}`} onClick={() => setBook('fish')}>
+              <span>🐠</span> Fish
+            </button>
+            <button role="tab" aria-selected={book === 'visitors'} className={`subtab ${book === 'visitors' ? 'is-active' : ''}`} onClick={() => setBook('visitors')}>
+              <span>✨</span> Visitors
+            </button>
+          </div>
+          {book === 'fish' ? <Overview /> : <VisitorBook />}
+        </>
+      )}
     </Modal>
+  )
+}
+
+/** Every visitor, as a silhouette with a hint until you've met it. */
+function VisitorBook() {
+  const log = useGameStore((s) => s.visitors)
+  const placed = useGameStore((s) => s.placedDecorations)
+  const gifts = useGameStore((s) => s.stats.giftsOpened)
+  const night = useUIStore((s) => s.night)
+  const here = useUIStore((s) => s.visit?.visitorId)
+  const { met, total } = visitorTotals(log)
+
+  // Thumbnails are rendered the first time the page is opened.
+  useEffect(() => {
+    usePreviewStore.getState().requestPreviews(VISITORS.map((v) => ({ key: visitorPreviewKey(v.id), kind: 'visitor' as const, defId: v.id })))
+  }, [])
+
+  return (
+    <div className="pedia">
+      <div className="pedia-summary">
+        <div className="pedia-stat">
+          <strong>{met}<small>/{total}</small></strong>
+          <span>Visitors met</span>
+          <span className="bar"><span style={{ width: `${(met / total) * 100}%` }} /></span>
+        </div>
+        <div className="pedia-stat">
+          <strong>{gifts}</strong>
+          <span>Gifts opened</span>
+        </div>
+      </div>
+      <p className="pedia-next">Visitors drop by when your tank has something they like. They stay a little while, then leave a gift on the gravel. Tap them to say hi!</p>
+      <div className="visitor-grid">
+        {VISITORS.map((v) => {
+          const record = log[v.id]
+          const ready = canVisit(v, placed, 'any')
+          const now = canVisit(v, placed, night ? 'night' : 'day')
+          return (
+            <div key={v.id} className={`visitor-card ${record ? 'is-found' : 'is-missing'} ${here === v.id ? 'is-here' : ''}`}>
+              <span className="pedia-art">
+                <ItemThumbnail previewKey={visitorPreviewKey(v.id)} color={v.look.color} className="pedia-thumb" />
+              </span>
+              <div className="visitor-copy">
+                <strong>{record ? `${v.icon} ${v.name}` : '???'}</strong>
+                <span className={`rarity rarity-${v.rarity}`}>{v.rarity}</span>
+                <p>{record ? v.description : v.hint}</p>
+                <small>
+                  {here === v.id
+                    ? '👀 Visiting right now!'
+                    : record
+                      ? `Comes for: ${v.likes} · ${record.visits} visit${record.visits === 1 ? '' : 's'}`
+                      : ready && !now
+                        ? '🌙 Your tank is ready. It comes after dark.'
+                        : ready
+                          ? '✨ Your tank is ready. Keep an eye out!'
+                          : '🔍 Not tempted by your tank yet'}
+                </small>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -209,6 +289,12 @@ function EntryPage({ defId }: { defId: string }) {
           )}
         </div>
       </div>
+
+      {found && FISH_FACTS[defId] && (
+        <p className="pedia-fact">
+          💡 <strong>Did you know?</strong> {FISH_FACTS[defId]}
+        </p>
+      )}
 
       {found && (
         <dl className="pedia-facts">

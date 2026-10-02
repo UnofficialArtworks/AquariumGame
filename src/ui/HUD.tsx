@@ -8,9 +8,16 @@ import { inheritedDefinition } from '../state/nursery'
 import { firstNewShopCategory, friendshipReady, newHatchlings, transferProblem } from '../state/rules'
 import { getMorph, speciesLabel } from '../state/morphs'
 import { getFoodDef } from '../scene/food/foodDefinitions'
+import { getDecorationDef } from '../scene/decorations/decorationDefinitions'
+import type { FishInstance } from '../state/types'
 import { algaeCoverage } from '../sim/algae'
 import { savePhoto } from './photo'
 import { Button } from './components/Button'
+import { getVisitor, visitorName } from '../state/visitors'
+import { ShareTank } from './ShareTank'
+import { hasFavorite, hasPersonality, personalityOf, SCHOOL_SIZE, schoolSize, TRAITS } from '../state/personality'
+import { beautyOf } from '../state/beauty'
+import { endVisit } from '../app/visit'
 import { Coin, CoinText, Glyph } from './Coin'
 import { Modal } from './components/Modal'
 import { Dock } from './dock/Dock'
@@ -306,6 +313,39 @@ function CareGauges() {
 
 // --- selected fish -----------------------------------------------------------------
 
+/** Trait, favourites and school: what makes this fish itself. */
+function FishCharacter({ fish }: { fish: FishInstance }) {
+  const c = personalityOf(fish.id)
+  const trait = TRAITS[c.trait]
+  const hasFav = useGameStore((s) => hasFavorite(fish.id, s.placedDecorations))
+  const school = useGameStore((s) => schoolSize(fish, s.ownedFish))
+  return (
+    <div className="pop-character">
+      <p>
+        <span className="trait-chip">
+          {trait.icon} {trait.name}
+        </span>{' '}
+        {trait.text}
+      </p>
+      <p className={hasFav ? 'is-happy' : ''}>
+        💗 Loves the <strong>{getDecorationDef(c.favoriteDecor)?.name}</strong>
+        {hasFav ? ' and has one to visit! (+10% coins)' : '. Add one and watch it visit.'}
+      </p>
+      <p>
+        🍬 Favourite treat: <strong>{getFoodDef(c.favoriteTreat).name}</strong>
+      </p>
+      {school !== null && (
+        <p className={school >= SCHOOL_SIZE ? 'is-happy' : ''}>
+          🐟{' '}
+          {school >= SCHOOL_SIZE
+            ? `A happy school of ${school}! (+15% coins)`
+            : `Happier in a school of ${SCHOOL_SIZE}. Add ${SCHOOL_SIZE - school} more of its kind.`}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function FishInfoCard() {
   const selectedFishId = useUIStore((s) => s.selectedFishId)
   const selectFish = useUIStore((s) => s.selectFish)
@@ -364,6 +404,7 @@ function FishInfoCard() {
         </p>
       )}
       <p className="pop-desc">{def.description}</p>
+      {fish.habitat === 'main' && hasPersonality(species) && <FishCharacter fish={fish} />}
       {def.appetite > 0 && (
         <div className="pop-meter">
           <span>Tummy</span>
@@ -448,6 +489,12 @@ function Toasts() {
   )
 }
 
+/** "🐚 a Hermit Crab and 🫧 a Bubble Goby": who came by while you were away. */
+function listVisitors(ids: string[]): string {
+  const names = [...new Set(ids)].map((id) => getVisitor(id)).filter((v) => v !== undefined).map((v) => `${v.icon} ${visitorName(v)}`)
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
 function RewardModals() {
   const levelUp = useUIStore((s) => s.levelUp)
   const setLevelUp = useUIStore((s) => s.setLevelUp)
@@ -495,6 +542,11 @@ function RewardModals() {
             <p>
               <strong><Coin /> +{welcomeBack.coins}</strong> coins earned
             </p>
+            {welcomeBack.visitors && welcomeBack.visitors.length > 0 && (
+              <p>
+                🎁 {listVisitors(welcomeBack.visitors)} stopped by and left {welcomeBack.visitors.length === 1 ? 'a gift' : 'gifts'} on the gravel. Tap to open!
+              </p>
+            )}
             {welcomeBack.hungryFish > 0 && <p>{welcomeBack.hungryFish} fish could use a snack.</p>}
             {welcomeBack.murkPercent > 20 && <p>The water is {welcomeBack.murkPercent}% murky. Time for a clean?</p>}
             <div className="reward-actions">
@@ -509,9 +561,62 @@ function RewardModals() {
   )
 }
 
+/** Shown instead of the usual controls while looking at a friend's shared tank. */
+function VisitBar() {
+  const visiting = useUIStore((s) => s.visiting)!
+  const stars = useGameStore((s) => beautyOf(s.placedDecorations).stars)
+  return (
+    <header className="topbar visit-bar">
+      <div className="visit-title">
+        {visiting.status === 'broken' ? (
+          <>
+            <strong>That tank link didn't work</strong>
+            <small>It may have been cut short when it was copied. Ask your friend to send it again.</small>
+          </>
+        ) : (
+          <>
+            <small>👀 Visiting</small>
+            <strong>{visiting.status === 'loading' ? '…' : visiting.name}</strong>
+            {visiting.status === 'ready' && (
+              <small>
+                {'★'.repeat(stars)}
+                {'☆'.repeat(5 - stars)} · {visiting.fish} fish · look only
+              </small>
+            )}
+          </>
+        )}
+      </div>
+      <div className="visit-actions">
+        {visiting.status === 'ready' && (
+          <>
+            <button className="icon-btn photo-btn" onClick={savePhoto} title="Save a photo of this aquarium">
+              📸
+            </button>
+            <button className="icon-btn" onClick={() => useUIStore.getState().setRelax(true)} title="Relax: hide the buttons and let the camera wander">
+              😌
+            </button>
+          </>
+        )}
+        <Button variant="primary" onClick={endVisit}>
+          🏠 Back to my tank
+        </Button>
+      </div>
+    </header>
+  )
+}
+
 export function HUD() {
   const activeTank = useUIStore((s) => s.activeTank)
   const selectedFishId = useUIStore((s) => s.selectedFishId)
+  const visiting = useUIStore((s) => s.visiting !== null)
+  if (visiting) {
+    return (
+      <div className="hud">
+        <VisitBar />
+        <Toasts />
+      </div>
+    )
+  }
   return (
     <div className="hud">
       <TopBar />
@@ -522,6 +627,7 @@ export function HUD() {
       <RewardModals />
       <Fishpedia />
       <Goals />
+      <ShareTank />
     </div>
   )
 }

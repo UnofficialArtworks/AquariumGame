@@ -267,6 +267,9 @@ export function WatchDrawer() {
         <Button onClick={() => useUIStore.getState().setRelax(true)} title="Hide the buttons and let the camera wander">
           😌 Relax
         </Button>
+        <Button onClick={() => useUIStore.getState().openModal('share')} title="Send your tank to a friend as a link">
+          🔗 Share
+        </Button>
       </DrawerHead>
       <FishGrid habitat="main" />
       <p className="save-note">Progress saves automatically in this browser.</p>

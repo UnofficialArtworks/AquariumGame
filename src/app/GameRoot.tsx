@@ -12,6 +12,7 @@ import { setSoundEnabled, unlockAudio } from '../audio/sfx'
 import { setMusicEnabled, setMusicMood } from '../audio/music'
 import { PhotoCapture, useAdaptiveDpr } from '../scene/RenderBudget'
 import { RelaxOverlay } from '../ui/RelaxOverlay'
+import { updateVisitors } from '../sim/visitors'
 
 export function GameRoot() {
   const sound = useGameStore((s) => s.settings.sound)
@@ -24,10 +25,13 @@ export function GameRoot() {
     let ticks = 0
     const interval = setInterval(() => {
       const s = useGameStore.getState()
-      s.tick()
-      s.refreshGoals()
       const ui = useUIStore.getState()
       ui.syncClock()
+      // A friend's tank just sits there looking lovely: no hunger, goals or visitors.
+      if (ui.visiting) return
+      s.tick()
+      s.refreshGoals()
+      updateVisitors()
       if (ui.relax && !document.hidden) s.noteStat('relaxSeconds')
       growAlgae(1, s.murk, bonusesFor(s.placedDecorations).algaeRate)
       ticks++

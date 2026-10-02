@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { usePreviewStore } from '../../state/usePreviewStore'
+import { usePreviewStore, type PreviewKind } from '../../state/usePreviewStore'
 import { getDecorationDef } from '../decorations/decorationDefinitions'
 import { DecorationVisual } from '../decorations/DecorationVisual'
 import { getFishDef } from '../fish/fishDefinitions'
@@ -18,11 +18,17 @@ import { PreviewContext } from '../decorations/decorationHooks'
 import { aquaUniforms } from '../materials/aquaShader'
 import { morphedDefinition } from '../../state/morphs'
 import type { MorphId } from '../../state/types'
+import { getVisitor } from '../../state/visitors'
+import { VisitorVisual } from '../visitors/VisitorVisual'
 
 const PREVIEW_PIXELS = 160
 const VIEW_DIRECTION = new THREE.Vector3(0.6, 0.55, 1).normalize()
 
-function TargetContent({ defId, kind, morph }: { defId: string; kind: 'decoration' | 'fish'; morph?: MorphId }) {
+function TargetContent({ defId, kind, morph }: { defId: string; kind: PreviewKind; morph?: MorphId }) {
+  if (kind === 'visitor') {
+    const visitor = getVisitor(defId)
+    return visitor ? <VisitorVisual visitor={visitor} /> : null
+  }
   if (kind === 'fish') {
     const species = getFishDef(defId)
     if (!species) return null
@@ -43,7 +49,7 @@ function TargetContent({ defId, kind, morph }: { defId: string; kind: 'decoratio
 }
 
 /** Frame and capture a thumbnail with isolated lighting, then restore tank uniforms. */
-function CaptureRig({ defId, kind, morph, onCaptured }: { defId: string; kind: 'decoration' | 'fish'; morph?: MorphId; onCaptured: (dataUrl: string) => void }) {
+function CaptureRig({ defId, kind, morph, onCaptured }: { defId: string; kind: PreviewKind; morph?: MorphId; onCaptured: (dataUrl: string) => void }) {
   const contentRef = useRef<THREE.Group>(null)
   const captured = useRef(false)
   const { gl, camera, scene } = useThree()

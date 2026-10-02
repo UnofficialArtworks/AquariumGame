@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { ShopCategory } from './rules'
 import { nightLevel, type NightOverride } from '../sim/daylight'
 
-export type ModalId = 'shop' | 'help' | 'fishpedia' | 'goals' | null
+export type ModalId = 'shop' | 'help' | 'fishpedia' | 'goals' | 'share' | null
 /** Shop drawer tabs: one per shop category. */
 export type ShopTab = ShopCategory
 export type AppMode = 'view' | 'feed' | 'clean' | 'decorate'
@@ -31,6 +31,27 @@ export interface WelcomeBackInfo {
   hungryFish: number
   algaePercent: number
   murkPercent: number
+  /** Visitors who came by while you were away (each left a gift). */
+  visitors?: string[]
+}
+
+/** Looking at a friend's shared tank (nothing you do is saved). */
+export interface TankVisit {
+  status: 'loading' | 'ready' | 'broken'
+  name: string
+  fish: number
+}
+
+/** A visitor in the tank right now. */
+export interface ActiveVisit {
+  uid: number
+  visitorId: string
+  /** Where it hangs out: by the decoration it came for, or mid-tank. */
+  home: [number, number, number]
+  arrivedAt: number
+  leaveAt: number
+  /** When it started to leave (it fades out, then leaves its gift). */
+  leavingAt: number | null
 }
 
 interface UIState {
@@ -69,6 +90,8 @@ interface UIState {
   goalsNews: number
   /** Species the Fishpedia opens on (null = the overview). */
   fishpediaPick: string | null
+  visit: ActiveVisit | null
+  visiting: TankVisit | null
   setMode: (mode: AppMode) => void
   setDraggingId: (id: string | null) => void
   setSelectedDecorationId: (id: string | null) => void
@@ -97,6 +120,7 @@ interface UIState {
   openGoals: () => void
   openFishpedia: (defId?: string | null) => void
   setFishpediaPick: (defId: string | null) => void
+  setVisit: (visit: ActiveVisit | null) => void
 }
 
 let toastSeq = 1
@@ -133,6 +157,8 @@ export const useUIStore = create<UIState>()((set, get) => ({
   fishpediaNews: 0,
   goalsNews: 0,
   fishpediaPick: null,
+  visit: null,
+  visiting: null,
   setMode: (mode) =>
     set({
       mode,
@@ -203,4 +229,5 @@ export const useUIStore = create<UIState>()((set, get) => ({
   bumpGoalsNews: (count) => set({ goalsNews: get().goalsNews + count }),
   openGoals: () => set({ activeModal: 'goals', goalsNews: 0 }),
   setFishpediaPick: (defId) => set({ fishpediaPick: defId }),
+  setVisit: (visit) => set({ visit }),
 }))

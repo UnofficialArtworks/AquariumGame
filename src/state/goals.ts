@@ -7,6 +7,7 @@ import type { GameState, GameStats } from './types'
 import { levelFromXp } from './progression'
 import { fishpediaTotals } from './fishpedia'
 import { beautyOf } from './beauty'
+import { eligibleVisitors, VISITORS, visitorTotals } from './visitors'
 import { hashString, mulberry32 } from '../utils/rng'
 
 export type StatKey = keyof GameStats
@@ -42,6 +43,15 @@ const WISHES: WishTemplate[] = [
   { id: 'greet', icon: '👋', kind: 'play', stat: 'fishGreeted', target: () => 5, text: (n) => `Say hi to ${n} fish (tap them)` },
   { id: 'photo', icon: '📸', kind: 'play', stat: 'photos', target: () => 1, text: () => 'Take a photo of your aquarium' },
   { id: 'relax', icon: '😌', kind: 'play', stat: 'relaxSeconds', target: () => 60, text: () => 'Relax with your fish for a minute' },
+  {
+    id: 'gift',
+    icon: '🎁',
+    kind: 'play',
+    stat: 'giftsOpened',
+    target: () => 1,
+    text: () => 'Open a gift from a visitor',
+    available: (s) => eligibleVisitors(s.placedDecorations, 'day').length > 0,
+  },
   { id: 'coins', icon: '🪙', kind: 'play', stat: 'coinsCollected', target: (l) => 40 + l * 20, text: (n) => `Earn ${n} coins` },
   { id: 'decor', icon: '🪸', kind: 'create', stat: 'decorPlaced', target: () => 2, text: (n) => `Place ${n} decorations` },
   {
@@ -170,6 +180,18 @@ export const TROPHIES: Trophy[] = [
     coins: 400,
     progress: (s) => beautyOf(s.placedDecorations).sets[0]?.count ?? 0,
   },
+  { id: 'visitor-1', icon: '✨', name: 'First Guest', text: 'Meet your first visitor', target: 1, coins: 50, progress: (s) => visitorTotals(s.visitors).met },
+  { id: 'visitors-6', icon: '🏡', name: 'Popular Spot', text: 'Meet 6 different visitors', target: 6, coins: 300, progress: (s) => visitorTotals(s.visitors).met },
+  {
+    id: 'visitors-all',
+    icon: '📒',
+    name: 'Guest Book',
+    text: 'Meet every visitor',
+    target: VISITORS.length,
+    coins: 800,
+    progress: (s) => visitorTotals(s.visitors).met,
+  },
+  { id: 'gifts', icon: '🎁', name: 'Gift Collector', text: 'Open 25 visitor gifts', target: 25, coins: 250, progress: stat('giftsOpened') },
   { id: 'level-10', icon: '⭐', name: 'Rising Star', text: 'Reach level 10', target: 10, coins: 200, progress: (s) => levelFromXp(s.xp).level },
   { id: 'level-20', icon: '🌠', name: 'Shining Star', text: 'Reach level 20', target: 20, coins: 400, progress: (s) => levelFromXp(s.xp).level },
   { id: 'level-30', icon: '🏆', name: 'Aquarium Legend', text: 'Reach level 30', target: 30, coins: 1000, progress: (s) => levelFromXp(s.xp).level },

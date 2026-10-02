@@ -13,6 +13,10 @@ import { statusTexture, type StatusIcon } from './statusIcons'
 import type { FishAgent } from '../../sim/world'
 import { simClock } from '../../sim/world'
 import { sfx } from '../../audio/sfx'
+import { hasPersonality, tryPet } from '../../state/personality'
+import { spawnPopup } from '../../sim/popups'
+import { spawnCoinBubble } from '../../sim/coins'
+import { coinValueFor } from '../../state/economy'
 import { JellyfishEntity } from '../creatures/Jellyfish'
 import { SeahorseEntity } from '../creatures/Seahorse'
 import { AxolotlEntity } from '../creatures/Axolotl'
@@ -116,7 +120,18 @@ export function CreatureOverlay({
     sfx.click()
     if (selecting) useGameStore.getState().noteStat('fishGreeted')
     // Say hi: a happy shimmy and a look at the player.
-    if (selecting && agentRef.current && !agentRef.current.sleeping) agentRef.current.wiggle = 1.1
+    const agent = agentRef.current
+    if (selecting && agent && !agent.sleeping) agent.wiggle = 1.1
+    // The first hello in an hour really makes its day: hearts and a little coin.
+    if (selecting && agent && hasPersonality(def) && tryPet(fishId)) {
+      agent.effects.hearts = simClock.t + 3
+      const at = agent.object.position
+      spawnPopup({ x: at.x, y: at.y + iconHeight + 0.1, z: at.z }, '♥', '#ff5d8f', true)
+      if (!ui.visiting) {
+        const growth = useGameStore.getState().fishVitals[fishId]?.growth ?? 0
+        spawnCoinBubble(at.clone().setY(at.y + 0.1), coinValueFor(Math.max(1, def.coinValue), growth))
+      }
+    }
   }
 
   return (

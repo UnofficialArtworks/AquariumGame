@@ -841,3 +841,176 @@ test('trophies pay out once when reached, and saved goals survive a reload', asy
   assert.equal(fresh.daily.wishes.length, 0)
   assert.equal(migrate({ ...saved, daily: { day: 5, wishes: 'x' } }, 6).daily.wishes.length, 0)
 })
+
+test('visitors come for what they like, and every one is findable from its hint', async () => {
+  const { VISITORS, canVisit, eligibleVisitors, pickVisitor, visitSpot } = await import('../src/state/visitors')
+  const decor = new Set(DECORATION_CATALOG.map((d) => d.id))
+  for (const v of VISITORS) {
+    // Everything a visitor asks for exists, and there's always a hint.
+    for (const id of [...(v.needs.any ?? []), ...(v.needs.all ?? [])]) assert.ok(decor.has(id), `${v.id} wants ${id}`)
+    assert.ok(v.hint.length > 10 && v.likes.length > 3)
+    assert.equal(v.look.appetite, 0)
+    assert.equal(v.look.coinValue, 0)
+  }
+  const place = (...ids: string[]) => ids.map((defId, i) => ({ id: `d${i}`, defId, position: [i - 2, 0, 0] as [number, number, number], rotationY: 0 }))
+  const crab = VISITORS.find((v) => v.id === 'treasure-crab')!
+  const ghost = VISITORS.find((v) => v.id === 'ghost-shrimp')!
+  const dragon = VISITORS.find((v) => v.id === 'sea-dragon')!
+  assert.equal(canVisit(crab, place('rock-cluster'), 'day'), false)
+  assert.equal(canVisit(crab, place('treasure-chest'), 'day'), true)
+  // Night-only guests wait for dark, but may still visit while you're away.
+  assert.equal(canVisit(ghost, place('glow-mushrooms'), 'day'), false)
+  assert.equal(canVisit(ghost, place('glow-mushrooms'), 'night'), true)
+  assert.equal(canVisit(ghost, place('glow-mushrooms'), 'any'), true)
+  // "All" means all.
+  assert.equal(canVisit(dragon, place('tall-kelp'), 'day'), false)
+  assert.equal(canVisit(dragon, place('tall-kelp', 'temple-ruins'), 'day'), true)
+  // The starter tank already tempts someone.
+  assert.ok(eligibleVisitors(createInitialState().placedDecorations, 'day').length > 0)
+
+  // Strangers are likelier than old friends, and nobody comes twice in a row if others could.
+  const pool = eligibleVisitors(place('treasure-chest', 'air-stone'), 'day')
+  assert.equal(pool.length, 2)
+  let newcomer = 0
+  for (let i = 0; i < 400; i++) if (pickVisitor(pool, { 'bubble-goby': { visits: 3, first: 1 } }, Math.random)!.id === 'treasure-crab') newcomer++
+  assert.ok(newcomer > 260, `newcomer picked ${newcomer}/400`)
+  for (let i = 0; i < 20; i++) assert.equal(pickVisitor(pool, {}, Math.random, 'treasure-crab')!.id, 'bubble-goby')
+  assert.equal(pickVisitor([], {}, Math.random), null)
+  // Gifts land beside the decoration it came for.
+  const [x, z] = visitSpot(crab, place('treasure-chest'), () => 0.25)
+  assert.ok(Math.hypot(x - -2, z) < 1.2)
+})
+
+test('visitors are recorded once, leave gifts that pay once, and drop by while you are away', async () => {
+  const { MAX_GIFTS, giftReward, getVisitor, FIRST_VISIT_XP } = await import('../src/state/visitors')
+  const xp = store.getState().xp
+  store.getState().visitorArrived('bubble-goby')
+  assert.equal(store.getState().visitors['bubble-goby'].visits, 1)
+  assert.equal(store.getState().xp, xp + FIRST_VISIT_XP.common)
+  store.getState().visitorArrived('bubble-goby')
+  assert.equal(store.getState().visitors['bubble-goby'].visits, 2)
+  assert.equal(store.getState().xp, xp + FIRST_VISIT_XP.common)
+  assert.equal(store.getState().stats.visits, 2)
+  store.getState().visitorArrived('nobody')
+  assert.equal(store.getState().stats.visits, 2)
+
+  store.getState().leaveGift('bubble-goby', 0.5, 0.2)
+  const gift = store.getState().gifts[0]
+  assert.equal(gift.coins, giftReward(getVisitor('bubble-goby')!, levelFromXp(store.getState().xp).level).coins)
+  const coins = store.getState().currency
+  assert.ok(store.getState().openGift(gift.id))
+  assert.equal(store.getState().currency, coins + gift.coins)
+  assert.equal(store.getState().openGift(gift.id), null)
+  assert.equal(store.getState().stats.giftsOpened, 1)
+  // A full gravel opens the oldest gift to make room.
+  for (let i = 0; i < MAX_GIFTS + 2; i++) store.getState().leaveGift('bubble-goby', 0, 0)
+  assert.equal(store.getState().gifts.length, MAX_GIFTS)
+  assert.equal(store.getState().stats.giftsOpened, 3)
+
+  // An hour away brings a few visits, each with a gift, and the welcome back says who came.
+  store.setState({ gifts: [], visitors: {}, lastTickTimestamp: Date.now() - 65 * 60 * 1000 })
+  store.getState().applyOfflineProgress()
+  const away = ui.getState().welcomeBack?.visitors ?? []
+  assert.equal(away.length, 3)
+  assert.equal(store.getState().gifts.length, 3)
+  assert.ok(away.every((id) => store.getState().visitors[id]))
+
+  // Saved visitors and gifts survive a reload; junk is dropped.
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  const restored = migrate({ ...saved }, 6)
+  assert.deepEqual(restored.visitors, store.getState().visitors)
+  assert.equal(restored.gifts.length, 3)
+  const junk = migrate({ ...saved, visitors: { nobody: { visits: 1, first: 1 }, 'bubble-goby': { visits: 'x' } }, gifts: [{ id: 'g', visitorId: 'bubble-goby', x: NaN }] }, 6)
+  assert.deepEqual(junk.visitors, {})
+  assert.deepEqual(junk.gifts, [])
+})
+
+test('a shared tank link round-trips the tank, keeps names private, and survives tampering', async () => {
+  const { encodeTank, decodeTank, packTank, unpackTank, shareCodeFrom, shareLink, visitState, DEFAULT_SHARED_NAME } = await import('../src/state/share')
+  const s = store.getState()
+  const fish = s.ownedFish.map((f, i) => (i === 0 ? { ...f, inheritance: { bodyParentName: 'Mum', colorParentName: 'Dad', bodyParentId: 'a', colorParentId: 'b', color: '#7a3cff', color2: '#ffd24a', morph: 'aurora' as const } } : f))
+  const tank = { ...s, aquariumName: 'Sparkle Reef', ownedFish: fish }
+  for (const code of [await encodeTank(tank), `j${Buffer.from(JSON.stringify(packTank(tank))).toString('base64url')}`]) {
+    const back = (await decodeTank(code))!
+    assert.equal(back.name, 'Sparkle Reef')
+    assert.deepEqual(back.decorations.map((d) => d.defId), tank.placedDecorations.map((d) => d.defId))
+    assert.deepEqual(back.fish.map((f) => f.defId), fish.map((f) => f.defId))
+    // Species names only; parents' names and ids never leave home.
+    assert.ok(back.fish.every((f) => f.name === getFishDef(f.defId)!.name))
+    assert.equal(back.fish[0].inheritance?.color, '#7a3cff')
+    assert.equal(back.fish[0].inheritance?.morph, 'aurora')
+    assert.equal(back.fish[0].inheritance?.bodyParentName, '')
+    assert.equal(shareCodeFrom(shareLink(code, 'https://example.com/game/')), code)
+  }
+  // Nursery fish stay home.
+  const nursery = { ...tank, ownedFish: [...fish, { ...fish[0], id: 'baby', habitat: 'nursery' as const }] }
+  assert.equal(packTank(nursery).f.length, fish.length)
+
+  // Anything odd is dropped or clamped rather than trusted.
+  const odd = unpackTank({
+    v: 1,
+    n: '\u0007   ' + 'x'.repeat(60),
+    b: 'not-a-background',
+    g: 42,
+    s: 'walnut',
+    d: [['treasure-chest', 999, -999, 1], ['nope', 0, 0, 0], 'junk', ['air-stone', NaN, 0, 0]],
+    f: [['koi', 99, 7], ['ghost', 1, 1], ['goldfish', 1, 1, 'red', '#00ff00']],
+  })!
+  assert.equal(odd.name.length, 28)
+  assert.equal(odd.backgroundId, createInitialState().backgroundId)
+  assert.deepEqual(odd.decorations.map((d) => d.defId), ['treasure-chest', 'air-stone'])
+  assert.ok(Math.abs(odd.decorations[0].position[0]) < 5 && Math.abs(odd.decorations[0].position[2]) < 3)
+  assert.equal(odd.fish.length, 2)
+  assert.equal(odd.fish[0].sizeScale, getFishDef('koi')!.sizeRange[1])
+  assert.equal(odd.growth[odd.fish[0].id], 1)
+  assert.equal(odd.fish[1].inheritance, undefined)
+  assert.equal(unpackTank({ v: 1, n: '', d: [], f: [] })!.name, DEFAULT_SHARED_NAME)
+  assert.equal(unpackTank({ v: 2, d: [], f: [] }), null)
+  assert.equal(unpackTank('hello'), null)
+  assert.equal(await decodeTank('zNotReallyCompressed'), null)
+  assert.equal(await decodeTank('q123'), null)
+  assert.equal(shareCodeFrom('hello there'), null)
+  const big = { v: 1, n: 'Big', d: Array.from({ length: 500 }, () => ['air-stone', 0, 0, 0]), f: Array.from({ length: 500 }, () => ['guppy', 1, 1]) }
+  const capped = unpackTank(big)!
+  assert.ok(capped.decorations.length <= 80)
+  assert.equal(capped.fish.length, MAX_OWNED_FISH)
+
+  // Visiting shows their tank with content fish and no leftovers of yours.
+  const view = visitState(odd)
+  assert.equal(view.ownedFish!.length, 2)
+  assert.deepEqual(view.gifts, [])
+  assert.ok(Object.values(view.fishVitals!).every((v) => v.hunger < 0.3))
+})
+
+test('fish personalities are stable, favourites are gettable, and happy schools and favourites pay a little more', async () => {
+  const { personalityOf, TRAITS, moodBonus, schoolSize, tryPet, PET_COOLDOWN_MS, SCHOOL_SIZE, SCHOOL_COIN_BONUS, FAVORITE_COIN_BONUS } = await import('../src/state/personality')
+  const { FISH_FACTS } = await import('../src/state/facts')
+  assert.deepEqual(personalityOf('fish-a'), personalityOf('fish-a'))
+  const traits = new Set<string>()
+  for (let i = 0; i < 200; i++) {
+    const p = personalityOf(`fish-${i}`)
+    traits.add(p.trait)
+    const decor = DECORATION_CATALOG.find((d) => d.id === p.favoriteDecor)!
+    assert.ok(decor && !decor.bonus && !['epic', 'legendary'].includes(decor.rarity))
+    assert.ok(FOOD_CATALOG.some((f) => f.id === p.favoriteTreat && !f.unlimited))
+  }
+  assert.equal(traits.size, Object.keys(TRAITS).length)
+
+  const tetras = Array.from({ length: SCHOOL_SIZE }, (_, i) => ({ id: `t${i}`, defId: 'neon-tetra', name: 'T', bornAt: 0, habitat: 'main' as const, sizeScale: 1 }))
+  const goldie = { id: 'g', defId: 'goldfish', name: 'G', bornAt: 0, habitat: 'main' as const, sizeScale: 1 }
+  assert.equal(schoolSize(goldie, [goldie]), null)
+  assert.equal(schoolSize(tetras[0], tetras.slice(0, 3)), 3)
+  assert.equal(moodBonus('t0', tetras.slice(0, 4), []), 1)
+  assert.equal(moodBonus('t0', tetras, []), 1 + SCHOOL_COIN_BONUS)
+  const fav = { id: 'd', defId: personalityOf('g').favoriteDecor, position: [0, 0, 0] as [number, number, number], rotationY: 0 }
+  assert.equal(moodBonus('g', [goldie], []), 1)
+  assert.equal(moodBonus('g', [goldie], [fav]), 1 + FAVORITE_COIN_BONUS)
+
+  // Petting pays once an hour per fish.
+  assert.equal(tryPet('pet-me', 1000), true)
+  assert.equal(tryPet('pet-me', 2000), false)
+  assert.equal(tryPet('pet-me', 1000 + PET_COOLDOWN_MS), true)
+
+  // Every species has a fun fact.
+  for (const def of FISH_CATALOG) assert.ok(FISH_FACTS[def.id], `fact for ${def.id}`)
+})

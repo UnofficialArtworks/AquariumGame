@@ -38,6 +38,19 @@ import { beautyOf } from './beauty'
 import { STAND_CATALOG } from '../scene/stands/standDefinitions'
 import { discoveryRewards, recordFish } from './fishpedia'
 import { getToolDef } from '../scene/cleaning/toolDefinitions'
+import {
+  AWAY_VISIT_SECONDS,
+  eligibleVisitors,
+  FIRST_VISIT_XP,
+  getVisitor,
+  giftReward,
+  MAX_AWAY_VISITS,
+  MAX_GIFTS,
+  pickVisitor,
+  visitorName,
+  visitSpot,
+  type VisitorGift,
+} from './visitors'
 import { bonusReward, dayKey, getWishTemplate, newTrophies, rollWishes, wishDone, wishReward, type StatKey } from './goals'
 
 /** Hunger the auto-feeder keeps fish under while the player is away. */
@@ -92,6 +105,11 @@ interface GameActions {
   refreshGoals: () => void
   claimWish: (id: string) => boolean
   claimWishBonus: () => boolean
+  /** A visitor just came by: note it in the book (quietly when it happened while you were away). */
+  visitorArrived: (visitorId: string, quiet?: boolean) => void
+  /** A visitor left a gift on the gravel at (x, z). */
+  leaveGift: (visitorId: string, x: number, z: number) => void
+  openGift: (giftId: string) => VisitorGift | null
 }
 
 export type GameStore = GameState & GameActions
@@ -225,8 +243,21 @@ export const useGameStore = create<GameStore>()(
             hatchToast(hatched.length)
             get().noteFish(hatched, true)
           } else if (eggCreated) useUIStore.getState().pushToast('New eggs are cozy in the nursery!', 'success', '🥚')
+          // Visitors kept dropping by too, and each left a gift.
+          const awayVisitors: string[] = []
+          const visits = Math.min(MAX_AWAY_VISITS, Math.floor(elapsed / AWAY_VISIT_SECONDS))
+          for (let i = 0; i < visits; i++) {
+            const g = get()
+            const v = pickVisitor(eligibleVisitors(g.placedDecorations, 'any'), g.visitors, Math.random, awayVisitors[awayVisitors.length - 1])
+            if (!v) break
+            g.visitorArrived(v.id, true)
+            const [x, z] = visitSpot(v, g.placedDecorations)
+            g.leaveGift(v.id, x, z)
+            awayVisitors.push(v.id)
+          }
           if (elapsed > 180) {
             useUIStore.getState().setWelcomeBack({
+              visitors: awayVisitors,
               minutesAway: Math.round(elapsed / 60),
               coins: earned,
               hungryFish,
@@ -589,6 +620,49 @@ export const useGameStore = create<GameStore>()(
           get().grantXp(reward.xp)
           useUIStore.getState().pushToast(`All of today's wishes came true! +${reward.coins} coins`, 'reward', '🎁')
           return true
+        },
+
+        visitorArrived: (visitorId, quiet = false) => {
+          const s = get()
+          const v = getVisitor(visitorId)
+          if (!v) return
+          const known = s.visitors[visitorId]
+          set({
+            visitors: { ...s.visitors, [visitorId]: { visits: (known?.visits ?? 0) + 1, first: known?.first ?? Date.now() } },
+            stats: { ...s.stats, visits: s.stats.visits + 1 },
+          })
+          const ui = useUIStore.getState()
+          if (!known) {
+            const xp = FIRST_VISIT_XP[v.rarity]
+            if (!quiet) ui.pushToast(`New visitor! ${visitorName(v, { start: true })} came to see your tank. +${xp} XP`, 'success', v.icon)
+            ui.bumpFishpediaNews(1)
+            get().grantXp(xp)
+          } else if (!quiet) {
+            ui.pushToast(`${visitorName(v, { start: true })} came to visit!`, 'info', v.icon)
+          }
+        },
+
+        leaveGift: (visitorId, x, z) => {
+          const v = getVisitor(visitorId)
+          if (!v) return
+          // No room on the gravel: the oldest gift opens itself.
+          while (get().gifts.length >= MAX_GIFTS) get().openGift(get().gifts[0].id)
+          const s = get()
+          const reward = giftReward(v, levelFromXp(s.xp).level)
+          const gift: VisitorGift = { id: `gift-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, visitorId, x, z, ...reward, at: Date.now() }
+          set({ gifts: [...s.gifts, gift] })
+        },
+
+        openGift: (giftId) => {
+          const s = get()
+          const gift = s.gifts.find((g) => g.id === giftId)
+          if (!gift) return null
+          set({ gifts: s.gifts.filter((g) => g.id !== giftId), stats: { ...s.stats, giftsOpened: s.stats.giftsOpened + 1 } })
+          get().collectCoins(gift.coins, false)
+          get().grantXp(gift.xp)
+          const v = getVisitor(gift.visitorId)
+          useUIStore.getState().pushToast(`A gift from ${v ? visitorName(v, { definite: true }) : 'a visitor'}! +${gift.coins} coins`, 'reward', '🎁')
+          return gift
         },
       }
     },

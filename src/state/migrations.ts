@@ -12,6 +12,7 @@ import { recordFish, sanitizeFishpedia, type Fishpedia } from './fishpedia'
 import { getMorph } from './morphs'
 import { levelFromXp } from './progression'
 import { NO_WISHES, type DailyWishes } from './goals'
+import { getVisitor, MAX_GIFTS, type VisitorGift, type VisitorLog } from './visitors'
 
 export const CURRENT_SAVE_VERSION = 6
 
@@ -95,12 +96,16 @@ export function createInitialState(): GameState {
       friendships: 0,
       hatched: 0,
       relaxSeconds: 0,
+      visits: 0,
+      giftsOpened: 0,
     },
     settings: { sound: true, music: true },
     fishpedia: backfillFishpedia({}, ownedFish),
     seen: { shopLevel: 1, nurseryAt: now },
     daily: NO_WISHES,
     trophies: {},
+    visitors: {},
+    gifts: [],
   }
 }
 
@@ -171,6 +176,8 @@ export function sanitize(state: Partial<GameState>): GameState {
   merged.trophies = Object.fromEntries(
     Object.entries(state.trophies && typeof state.trophies === 'object' ? state.trophies : {}).filter(([, at]) => Number.isFinite(at)),
   )
+  merged.visitors = sanitizeVisitors(state.visitors)
+  merged.gifts = sanitizeGifts(state.gifts)
   for (const f of merged.ownedFish) {
     if (!merged.fishVitals[f.id]) merged.fishVitals = { ...merged.fishVitals, [f.id]: freshVitals(0.4) }
   }
@@ -234,4 +241,23 @@ function sanitizeDaily(raw: unknown, stats: GameState['stats']): DailyWishes {
     (w) => w && typeof w.id === 'string' && w.stat in stats && Number.isFinite(w.target) && w.target > 0 && Number.isFinite(w.base),
   )
   return { day: d.day, wishes: wishes.map((w) => ({ ...w, claimed: Boolean(w.claimed) })), bonusClaimed: Boolean(d.bonusClaimed) }
+}
+
+function sanitizeVisitors(raw: unknown): VisitorLog {
+  if (!raw || typeof raw !== 'object') return {}
+  return Object.fromEntries(
+    Object.entries(raw as VisitorLog)
+      .filter(([id, r]) => getVisitor(id) && r && Number.isFinite(r.visits) && r.visits > 0 && Number.isFinite(r.first))
+      .map(([id, r]) => [id, { visits: Math.floor(r.visits), first: r.first }]),
+  )
+}
+
+function sanitizeGifts(raw: unknown): VisitorGift[] {
+  if (!Array.isArray(raw)) return []
+  return (raw as VisitorGift[])
+    .filter(
+      (g) =>
+        g && typeof g.id === 'string' && getVisitor(g.visitorId) && [g.x, g.z, g.coins, g.xp, g.at].every(Number.isFinite) && g.coins >= 0 && g.xp >= 0,
+    )
+    .slice(-MAX_GIFTS)
 }

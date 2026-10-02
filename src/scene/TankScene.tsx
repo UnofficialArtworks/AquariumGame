@@ -27,6 +27,7 @@ import { useUIStore } from '../state/useUIStore'
 import { NURSERY_DECORATIONS } from './nurseryLayout'
 import { NurseryEggs } from './creatures/NurseryEggs'
 import { StandVisual } from './stands/StandVisual'
+import { Visitors } from './visitors/Visitors'
 
 export function TankScene() {
   const placedDecorations = useGameStore((s) => s.placedDecorations)
@@ -65,6 +66,7 @@ export function TankScene() {
       {ownedFish.filter((fish) => (fish.habitat ?? 'main') === activeTank).map((instance) => (
         <FishEntity key={instance.id} instance={instance} />
       ))}
+      {!nursery && <Visitors />}
       <FishEyesRenderer />
       <FoodRenderer />
       <CoinRenderer />
