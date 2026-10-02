@@ -41,6 +41,9 @@ export type DecorationKind =
   | 'filter'
   | 'fountain'
   | 'growlamp'
+  // Seasonal pieces (builders/seasonal.ts).
+  | 'pumpkin'
+  | 'snowman'
 
 export interface DecorationCatalogEntry extends DecorationDefinition {
   kind: DecorationKind
@@ -257,6 +260,46 @@ export const DECORATION_CATALOG: DecorationCatalogEntry[] = [
     bonus: { kind: 'coins', amount: 0.3, label: '+30% coin bubbles' },
   },
 ]
+
+/** Late-game helpers: cleaning becomes a choice, not a chore (kids who love scrubbing still can). */
+DECORATION_CATALOG.push(
+  {
+    id: 'robo-vac', name: 'Robo-Vac Sub', kind: 'submarine', rarity: 'epic', cost: 2200, unlockLevel: 20,
+    description: 'A busy little sub that hoovers up mess from the gravel all by itself.',
+    styleTags: ['scifi'], footprintRadius: 0.85, height: 0.95, color: '#7fd3ff', accentColor: '#ffe27a',
+    bonus: { kind: 'tidy', amount: 1, label: 'Tidies up waste' },
+  },
+  {
+    id: 'scrub-tower', name: 'Auto-Scrubber Tower', kind: 'filter', rarity: 'epic', cost: 2600, unlockLevel: 22,
+    description: 'Sends out tiny scrubbing bubbles that slowly polish the glass clean.',
+    styleTags: ['scifi', 'neutral'], footprintRadius: 0.35, height: 1.6, color: '#5fbf8f', accentColor: '#e9fff2',
+    bonus: { kind: 'scrub', amount: 1, label: 'Scrubs the glass' },
+  },
+)
+
+/** Seasonal pieces: sold only during their season, and back every year. */
+DECORATION_CATALOG.push(
+  {
+    id: 'blossom-coral', name: 'Blossom Coral', kind: 'staghorn', rarity: 'rare', cost: 300, unlockLevel: 1, season: 'spring-bloom',
+    description: 'Coral that bursts into pink spring blossom.',
+    styleTags: ['nature', 'sparkle'], footprintRadius: 0.45, height: 0.85, color: '#ffa9cf', accentColor: '#fff4f8',
+  },
+  {
+    id: 'sandcastle', name: 'Sandcastle', kind: 'castle', rarity: 'rare', cost: 350, unlockLevel: 1, season: 'summer-reef',
+    description: 'A sunny-day sandcastle that the waves never knock down.',
+    styleTags: ['classic'], footprintRadius: 0.65, height: 1.5, color: '#ecd29a', accentColor: '#39a7e0',
+  },
+  {
+    id: 'jack-o-lantern', name: "Jack-o'-Lantern", kind: 'pumpkin', rarity: 'rare', cost: 300, unlockLevel: 1, season: 'spooky-seas',
+    description: 'A grinning pumpkin with a warm glow. Extra spooky after dark!',
+    styleTags: ['adventure'], footprintRadius: 0.32, height: 0.5, color: '#ff8a1e', accentColor: '#ffd24a',
+  },
+  {
+    id: 'sea-snowman', name: 'Sea Snowman', kind: 'snowman', rarity: 'rare', cost: 300, unlockLevel: 1, season: 'winter-lights',
+    description: 'Built from sea foam, with a carrot nose and a twinkly sea-glass hat.',
+    styleTags: ['sparkle'], footprintRadius: 0.3, height: 0.95, color: '#f2f7ff', accentColor: '#ff7a2a',
+  },
+)
 
 export const STARTER_DECORATION_IDS = ['rock-cluster', 'driftwood', 'green-plant', 'air-stone']
 

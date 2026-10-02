@@ -78,6 +78,14 @@ export function growAlgae(seconds: number, murk: number, multiplier = 1) {
   recomputeCoverage()
 }
 
+/** Fade all algae a little (the Auto-Scrubber's slow polish). */
+export function fadeAlgae(fraction: number) {
+  const keep = 1 - fraction
+  for (let i = 0; i < CELLS; i++) grid[i] *= keep
+  dirty = true
+  recomputeCoverage()
+}
+
 /**
  * Wipe algae in an ellipse around (s, y): `radius` along the glass and
  * `radiusY` vertically (defaults to round). Returns how much was removed

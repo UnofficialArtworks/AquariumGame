@@ -11,6 +11,7 @@ import { DEFAULT_SUBSTRATE_ID, SUBSTRATE_CATALOG } from '../scene/substrates'
 import { DEFAULT_STAND_ID, STAND_CATALOG } from '../scene/stands/standDefinitions'
 import { clampToInterior } from '../scene/TankBounds'
 import { getMorph } from './morphs'
+import { isPattern } from './patterns'
 
 export interface SharedTank {
   name: string
@@ -25,8 +26,8 @@ export interface SharedTank {
 
 /** [defId, x, z, rotation] */
 type PackedDecoration = [string, number, number, number]
-/** [defId, size, growth, color, color2, color3, morph]: colours only for hatched fish. */
-type PackedFish = [string, number, number, string?, string?, string?, string?]
+/** [defId, size, growth, color, color2, color3, morph, pattern]: the rest only for hatched fish. */
+type PackedFish = [string, number, number, string?, string?, string?, string?, string?]
 
 interface Packed {
   v: 1
@@ -57,7 +58,7 @@ export function packTank(s: GameState): Packed {
         const size = round(f.sizeScale)
         const growth = round(s.fishVitals[f.id]?.growth ?? 1)
         const i = f.inheritance
-        return i ? [f.defId, size, growth, i.color, i.color2, i.color3 ?? '', i.morph ?? ''] : [f.defId, size, growth]
+        return i ? [f.defId, size, growth, i.color, i.color2, i.color3 ?? '', i.morph ?? '', i.pattern ?? ''] : [f.defId, size, growth]
       }),
   }
 }
@@ -101,6 +102,7 @@ export function unpackTank(raw: unknown): SharedTank | null {
     const color2 = str(entry[4])
     const color3 = str(entry[5])
     const morph = getMorph(str(entry[6]) as MorphId) ? (str(entry[6]) as MorphId) : undefined
+    const pattern = isPattern(entry[7]) ? entry[7] : undefined
     fish.push({
       id,
       defId: def.id,
@@ -110,7 +112,7 @@ export function unpackTank(raw: unknown): SharedTank | null {
       sizeScale: Math.min(max, Math.max(min, num(entry[1], 1))),
       inheritance:
         HEX.test(color) && HEX.test(color2)
-          ? { bodyParentName: '', colorParentName: '', bodyParentId: '', colorParentId: '', color, color2, color3: HEX.test(color3) ? color3 : undefined, morph }
+          ? { bodyParentName: '', colorParentName: '', bodyParentId: '', colorParentId: '', color, color2, color3: HEX.test(color3) ? color3 : undefined, morph, pattern }
           : undefined,
     })
     growth[id] = Math.min(1, Math.max(0, num(entry[2], 1)))

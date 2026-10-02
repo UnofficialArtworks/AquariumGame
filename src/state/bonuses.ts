@@ -13,9 +13,13 @@ export interface ActiveBonuses {
   /** Multiplies growth gained per meal. */
   growthRate: number
   autoFeeder: boolean
+  /** A helper vacuums up waste on its own. */
+  tidy: boolean
+  /** A helper slowly scrubs algae off the glass. */
+  scrub: boolean
 }
 
-export const NO_BONUSES: ActiveBonuses = { algaeRate: 1, murkRate: 1, coinRate: 1, growthRate: 1, autoFeeder: false }
+export const NO_BONUSES: ActiveBonuses = { algaeRate: 1, murkRate: 1, coinRate: 1, growthRate: 1, autoFeeder: false, tidy: false, scrub: false }
 
 let cacheKey: DecorationInstance[] | null = null
 let cacheValue: ActiveBonuses = NO_BONUSES
@@ -35,6 +39,8 @@ export function bonusesFor(placed: DecorationInstance[]): ActiveBonuses {
     coinRate: (1 + (best.coins ?? 0)) * (1 + beautyOf(placed).coinBonus),
     growthRate: 1 + (best.growth ?? 0),
     autoFeeder: (best.feeder ?? 0) > 0,
+    tidy: (best.tidy ?? 0) > 0,
+    scrub: (best.scrub ?? 0) > 0,
   }
   return cacheValue
 }

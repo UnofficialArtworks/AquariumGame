@@ -19,6 +19,7 @@ import {
 } from './builders/adventure'
 import { buildFeeder, buildFilter, buildFountain, buildGrowLamp, buildMarimo } from './builders/gadgets'
 import { buildAtlantis, buildCityGate, buildGeode, buildGlowCave } from './builders/legends'
+import { buildPumpkin, buildSnowman } from './builders/seasonal'
 import { DECORATION_FX } from './DecorationFx'
 import { GADGET_FX } from './GadgetFx'
 import { LEGENDS_FX } from './LegendsFx'
@@ -62,6 +63,8 @@ const BUILDERS: Record<DecorationKind, StaticBuilder | null> = {
   glowcave: buildGlowCave,
   atlantis: buildAtlantis,
   geode: buildGeode,
+  pumpkin: buildPumpkin,
+  snowman: buildSnowman,
 }
 
 const cache = new Map<string, BuiltPart[]>()

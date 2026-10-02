@@ -1,6 +1,7 @@
 import { FISH_CATALOG, getFishDef } from '../scene/fish/fishDefinitions'
 import { getMorph, MORPHS, speciesLabel } from './morphs'
-import type { FishInstance, FishpediaEntry, MorphId, Rarity } from './types'
+import type { FishInstance, FishpediaEntry, MorphId, PatternType, Rarity } from './types'
+import { hasPatterns, isPattern, PATTERN_COINS, PATTERN_XP, PATTERNS, patternName, patternOf, patternsFound } from './patterns'
 
 export type Fishpedia = Record<string, FishpediaEntry>
 
@@ -24,6 +25,8 @@ export interface Discoveries {
   /** Species that just earned their "bred in the nursery" stamp. */
   bred: string[]
   morphs: Array<{ defId: string; morph: MorphId }>
+  /** Patterns new to a species (besides its own). */
+  patterns: Array<{ defId: string; pattern: PatternType }>
 }
 
 /**
@@ -31,7 +34,7 @@ export interface Discoveries {
  * nothing was new) plus what was discovered, so the caller can celebrate.
  */
 export function recordFish(book: Fishpedia, fish: FishInstance[], hatched: boolean): Discoveries {
-  const found: Discoveries = { book, species: [], bred: [], morphs: [] }
+  const found: Discoveries = { book, species: [], bred: [], morphs: [], patterns: [] }
   let next = book
   for (const f of fish) {
     if (!getFishDef(f.defId)) continue
@@ -46,6 +49,12 @@ export function recordFish(book: Fishpedia, fish: FishInstance[], hatched: boole
     if (getMorph(morph) && !entry.morphs?.includes(morph!)) {
       entry = { ...entry, morphs: [...(entry.morphs ?? []), morph!] }
       found.morphs.push({ defId: f.defId, morph: morph! })
+    }
+    const def = getFishDef(f.defId)!
+    const pattern = patternOf(f)
+    if (hasPatterns(def) && pattern !== def.pattern && !entry.patterns?.includes(pattern)) {
+      entry = { ...entry, patterns: [...(entry.patterns ?? []), pattern] }
+      found.patterns.push({ defId: f.defId, pattern })
     }
     if (entry !== prev) {
       if (next === book) next = { ...book }
@@ -67,7 +76,7 @@ export interface DiscoveryRewards {
 
 /** What a batch of discoveries pays out, and how to announce it. */
 export function discoveryRewards(before: Fishpedia, found: Discoveries): DiscoveryRewards {
-  const reward: DiscoveryRewards = { coins: 0, xp: 0, news: found.species.length + found.morphs.length + found.bred.length, toasts: [] }
+  const reward: DiscoveryRewards = { coins: 0, xp: 0, news: found.species.length + found.morphs.length + found.bred.length + found.patterns.length, toasts: [] }
   let speciesXp = 0
   for (const id of found.species) {
     const def = getFishDef(id)!
@@ -86,6 +95,12 @@ export function discoveryRewards(before: Fishpedia, found: Discoveries): Discove
     reward.xp += MORPH_XP
     reward.toasts.push({ text: `So rare! A ${speciesLabel(getFishDef(defId)!, morph)} hatched! +${MORPH_COINS} coins`, icon: getMorph(morph)?.icon ?? '✨' })
   }
+  for (const { defId, pattern } of found.patterns) {
+    reward.coins += PATTERN_COINS
+    reward.xp += PATTERN_XP
+    if (found.patterns.length <= 2) reward.toasts.push({ text: `New pattern! A ${patternName(pattern)} ${getFishDef(defId)!.name} hatched! +${PATTERN_COINS} coins`, icon: '🎨' })
+  }
+  if (found.patterns.length > 2) reward.toasts.push({ text: `${found.patterns.length} new patterns found! +${found.patterns.length * PATTERN_COINS} coins`, icon: '🎨' })
   for (const count of milestonesCrossed(speciesCount(before), speciesCount(found.book))) {
     reward.coins += milestoneCoins(count)
     reward.toasts.push({ text: `Fishpedia milestone: ${count} species collected! +${milestoneCoins(count)} coins`, icon: '🏆' })
@@ -100,11 +115,18 @@ export function speciesCount(book: Fishpedia): number {
 export function fishpediaTotals(book: Fishpedia) {
   let morphs = 0
   let bred = 0
+  let patterns = 0
+  let fullSet = 0
   for (const def of FISH_CATALOG) {
     const entry = book[def.id]
     if (!entry) continue
     morphs += entry.morphs?.length ?? 0
     if (entry.bred) bred++
+    if (hasPatterns(def)) {
+      const n = patternsFound(def, entry).size
+      patterns += n
+      fullSet = Math.max(fullSet, n)
+    }
   }
   return {
     species: speciesCount(book),
@@ -112,6 +134,10 @@ export function fishpediaTotals(book: Fishpedia) {
     morphs,
     morphsTotal: FISH_CATALOG.length * MORPHS.length,
     bred,
+    patterns,
+    patternsTotal: FISH_CATALOG.filter(hasPatterns).length * PATTERNS.length,
+    /** The most patterns found for any one species. */
+    fullSet,
   }
 }
 
@@ -127,7 +153,13 @@ export function sanitizeFishpedia(raw: unknown): Fishpedia {
     const def = getFishDef(id)
     if (!def || !value || !Number.isFinite(value.discoveredAt)) continue
     const morphs = Array.isArray(value.morphs) ? [...new Set(value.morphs.filter((m) => getMorph(m)))] : []
-    book[def.id] = { discoveredAt: value.discoveredAt!, ...(value.bred ? { bred: true } : {}), ...(morphs.length ? { morphs } : {}) }
+    const patterns = Array.isArray(value.patterns) ? [...new Set(value.patterns.filter((p) => isPattern(p) && p !== def.pattern))] : []
+    book[def.id] = {
+      discoveredAt: value.discoveredAt!,
+      ...(value.bred ? { bred: true } : {}),
+      ...(morphs.length ? { morphs } : {}),
+      ...(patterns.length ? { patterns } : {}),
+    }
   }
   return book
 }

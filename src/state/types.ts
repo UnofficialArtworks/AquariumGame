@@ -1,5 +1,7 @@
 import type { DailyWishes } from './goals'
 import type { VisitorGift, VisitorLog } from './visitors'
+import type { OceanFish } from './ocean'
+import type { SeasonId } from './seasons'
 export type StyleTag = 'neutral' | 'adventure' | 'sparkle' | 'nature' | 'classic' | 'scifi'
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
@@ -7,7 +9,7 @@ export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
  * A passive perk granted while at least one copy of the decoration is
  * placed in the main aquarium. Copies don't stack.
  */
-export type DecorationBonusKind = 'algae' | 'murk' | 'coins' | 'growth' | 'feeder'
+export type DecorationBonusKind = 'algae' | 'murk' | 'coins' | 'growth' | 'feeder' | 'tidy' | 'scrub'
 
 export interface DecorationBonus {
   kind: DecorationBonusKind
@@ -29,6 +31,8 @@ export interface DecorationDefinition {
   /** Rough height, so fish know to swim around/over it. */
   height: number
   bonus?: DecorationBonus
+  /** Only sold during this season (yours to keep once bought). */
+  season?: SeasonId
 }
 
 export type CreatureKind = 'fish' | 'jellyfish' | 'seahorse' | 'axolotl' | 'snail' | 'shrimp' | 'octopus' | 'ray' | 'turtle'
@@ -98,6 +102,8 @@ export interface FishInheritance {
   color3?: string
   /** Hatched as a rare colour morph. */
   morph?: MorphId
+  /** The pattern it inherited (missing on older babies: the species' own). */
+  pattern?: PatternType
 }
 
 /** What the player has already looked at, so the "new" badges know what's new. */
@@ -115,6 +121,8 @@ export interface FishpediaEntry {
   bred?: boolean
   /** Rare colour morphs of this species you've hatched. */
   morphs?: MorphId[]
+  /** Patterns hatched besides the species' own. */
+  patterns?: PatternType[]
 }
 
 export interface FishInstance {
@@ -180,6 +188,8 @@ export interface GameStats {
   /** Visitors that came by (counting repeat visits). */
   visits: number
   giftsOpened: number
+  /** Fish released to the Open Ocean. */
+  released: number
 }
 
 export interface GameSettings {
@@ -225,4 +235,8 @@ export interface GameState {
   visitors: VisitorLog
   /** Gifts visitors left on the gravel, waiting to be opened. */
   gifts: VisitorGift[]
+  /** Fish you released, swimming on in the Open Ocean (newest last). */
+  ocean: OceanFish[]
+  /** The last season that said hello, e.g. 'spooky-seas-2026'. */
+  seasonSeen: string
 }

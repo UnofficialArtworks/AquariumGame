@@ -1,3 +1,4 @@
+import { getSeason, seasonOn } from '../../state/seasons'
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../../state/useGameStore'
 import { useUIStore, type ShopTab } from '../../state/useUIStore'
@@ -588,6 +589,8 @@ export function ShopDrawer() {
     if (open) useGameStore.getState().markShopSeen()
   }, [open, level])
 
+  const season = seasonOn()
+
   /** Lock, price and "why not" for a card, straight from the shop rules. */
   const card = (category: ShopCategory, id: string, name: string, unlockLevel: number) => {
     const check = checkPurchase(buyState, category, id)
@@ -618,6 +621,11 @@ export function ShopDrawer() {
           )
         })}
       </div>
+      {shopTab === 'decorations' && season && (
+        <p className="season-banner">
+          {season.icon} <strong>{season.name}</strong> is here! {season.blurb} Seasonal pieces are yours to keep, and they come back every year.
+        </p>
+      )}
       <div className="shop-grid">
         {shopTab === 'fish' &&
           sortShopItems(FISH_CATALOG, (d) => d.cost).map((def) => (
@@ -637,7 +645,10 @@ export function ShopDrawer() {
             />
           ))}
         {shopTab === 'decorations' &&
-          sortShopItems(DECORATION_CATALOG, (d) => d.cost).map((def) => (
+          sortShopItems(
+            DECORATION_CATALOG.filter((d) => !d.season || d.season === season?.id || unlockedDecorationDefIds.includes(d.id)),
+            (d) => d.cost,
+          ).map((def) => (
             <ShopItemCard
               key={def.id}
               previewKey={def.id}
@@ -646,7 +657,7 @@ export function ShopDrawer() {
               color={def.color}
               cost={def.cost}
               rarity={def.rarity}
-              badge={def.bonus?.label}
+              badge={def.bonus?.label ?? (def.season ? `${getSeason(def.season)?.icon} ${getSeason(def.season)?.name}` : undefined)}
               styles={styleIcons(def)}
               {...card('decorations', def.id, def.name, def.unlockLevel)}
               owned={unlockedDecorationDefIds.includes(def.id)}

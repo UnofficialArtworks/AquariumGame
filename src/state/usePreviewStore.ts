@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { DECORATION_CATALOG } from '../scene/decorations/decorationDefinitions'
 import { FISH_CATALOG } from '../scene/fish/fishDefinitions'
-import type { MorphId } from './types'
+import type { MorphId, PatternType } from './types'
 
 export type PreviewKind = 'decoration' | 'fish' | 'visitor'
 
@@ -12,6 +12,8 @@ export interface PreviewTarget {
   defId: string
   /** Fish only: render in a rare morph's colours. */
   morph?: MorphId
+  /** Fish only: render wearing this pattern. */
+  pattern?: PatternType
 }
 
 /** Thumbnail key for a visitor. */
@@ -19,9 +21,9 @@ export function visitorPreviewKey(id: string): string {
   return `visitor~${id}`
 }
 
-/** Thumbnail key for a species, or one of its morphs. */
-export function fishPreviewKey(defId: string, morph?: MorphId): string {
-  return morph ? `${defId}~${morph}` : defId
+/** Thumbnail key for a species, one of its morphs, or one of its patterns. */
+export function fishPreviewKey(defId: string, morph?: MorphId, pattern?: PatternType): string {
+  return `${defId}${morph ? `~${morph}` : ''}${pattern ? `~p-${pattern}` : ''}`
 }
 
 function buildQueue(): PreviewTarget[] {

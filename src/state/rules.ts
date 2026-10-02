@@ -1,3 +1,4 @@
+import { getSeason, inSeason, type SeasonId } from './seasons'
 import type { GameState } from './types'
 import { levelFromXp } from './progression'
 import { NURSERY_CAPACITY } from './economy'
@@ -29,13 +30,15 @@ export type PurchaseState = Pick<
 >
 
 /** Why something can't be bought: not sold, level too low, already yours, no room, or too few coins. */
-export type PurchaseBlock = 'missing' | 'locked' | 'owned' | 'full' | 'short'
+export type PurchaseBlock = 'missing' | 'locked' | 'owned' | 'full' | 'short' | 'season'
 
 export interface PurchaseCheck {
   ok: boolean
   reason?: PurchaseBlock
   cost: number
   unlockLevel: number
+  /** Seasonal items: the season they're sold in. */
+  season?: SeasonId
 }
 
 interface ShopEntry {
@@ -43,6 +46,7 @@ interface ShopEntry {
   unlockLevel: number
   owned: boolean
   full?: boolean
+  season?: SeasonId
 }
 
 /** Fish living in the main aquarium (nursery fish don't count toward its limit). */
@@ -58,7 +62,7 @@ function shopEntry(s: PurchaseState, category: ShopCategory, id: string): ShopEn
     }
     case 'decorations': {
       const def = getDecorationDef(id)
-      return def ? { cost: def.cost, unlockLevel: def.unlockLevel, owned: s.unlockedDecorationDefIds.includes(id) } : null
+      return def ? { cost: def.cost, unlockLevel: def.unlockLevel, owned: s.unlockedDecorationDefIds.includes(id), season: def.season } : null
     }
     case 'treats': {
       // Staple foods are free and never sold.
@@ -90,10 +94,11 @@ export function checkPurchase(s: PurchaseState, category: ShopCategory, id: stri
   const reason: PurchaseBlock | undefined =
     levelFromXp(s.xp).level < entry.unlockLevel ? 'locked'
     : entry.owned ? 'owned'
+    : !inSeason(entry.season) ? 'season'
     : entry.full ? 'full'
     : s.currency < entry.cost ? 'short'
     : undefined
-  return { ok: !reason, reason, cost: entry.cost, unlockLevel: entry.unlockLevel }
+  return { ok: !reason, reason, cost: entry.cost, unlockLevel: entry.unlockLevel, season: entry.season }
 }
 
 /** XP for buying something: a little for everything, more for big purchases. */
@@ -112,6 +117,10 @@ export function purchaseProblem(check: PurchaseCheck, name: string, currency: nu
       return `Your aquarium is full (${MAX_OWNED_FISH}/${MAX_OWNED_FISH}). Move a fish to the nursery or sell one to make room.`
     case 'owned':
       return `You already have ${name}.`
+    case 'season': {
+      const season = getSeason(check.season)
+      return season ? `${name} comes back for ${season.name} (${season.when}).` : `${name} isn't for sale right now.`
+    }
     case 'missing':
       return `${name} isn't for sale.`
     default:

@@ -28,7 +28,7 @@ export interface Personality {
 
 /** Favourites are things a player can actually get: no gadgets, nothing epic or legendary. */
 const FAVORITE_RARITIES: Rarity[] = ['common', 'uncommon', 'rare']
-const FAVORITE_DECOR = DECORATION_CATALOG.filter((d) => !d.bonus && FAVORITE_RARITIES.includes(d.rarity)).map((d) => d.id)
+const FAVORITE_DECOR = DECORATION_CATALOG.filter((d) => !d.bonus && !d.season && FAVORITE_RARITIES.includes(d.rarity)).map((d) => d.id)
 const TREATS = FOOD_CATALOG.filter((f) => !f.unlimited).map((f) => f.id)
 
 const cache = new Map<string, Personality>()

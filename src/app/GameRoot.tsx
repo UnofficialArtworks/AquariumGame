@@ -13,6 +13,7 @@ import { setMusicEnabled, setMusicMood } from '../audio/music'
 import { PhotoCapture, useAdaptiveDpr } from '../scene/RenderBudget'
 import { RelaxOverlay } from '../ui/RelaxOverlay'
 import { updateVisitors } from '../sim/visitors'
+import { runHelpers } from '../sim/helpers'
 
 export function GameRoot() {
   const sound = useGameStore((s) => s.settings.sound)
@@ -32,6 +33,7 @@ export function GameRoot() {
       s.tick()
       s.refreshGoals()
       updateVisitors()
+      runHelpers()
       if (ui.relax && !document.hidden) s.noteStat('relaxSeconds')
       growAlgae(1, s.murk, bonusesFor(s.placedDecorations).algaeRate)
       ticks++

@@ -16,6 +16,7 @@ import { Button } from './components/Button'
 import { getVisitor, visitorName } from '../state/visitors'
 import { ShareTank } from './ShareTank'
 import { hasFavorite, hasPersonality, personalityOf, SCHOOL_SIZE, schoolSize, TRAITS } from '../state/personality'
+import { hasPatterns, patternName } from '../state/patterns'
 import { beautyOf } from '../state/beauty'
 import { endVisit } from '../app/visit'
 import { Coin, CoinText, Glyph } from './Coin'
@@ -357,6 +358,7 @@ function FishInfoCard() {
   const renameFish = useGameStore((s) => s.renameFish)
   const transferFish = useGameStore((s) => s.transferFish)
   const sellFish = useGameStore((s) => s.sellFish)
+  const releaseFish = useGameStore((s) => s.releaseFish)
   const salePrice = useGameStore((s) => s.salePrice)
   const busy = useGameStore((s) => (selectedFishId ? s.nurserySession?.parentIds.includes(selectedFishId) ?? false : false))
   const [name, setName] = useState(fish?.name ?? '')
@@ -370,6 +372,7 @@ function FishInfoCard() {
   const growth = vitals?.growth ?? 0
   const destination = fish.habitat === 'nursery' ? 'main' : 'nursery'
   const price = salePrice(fish.id)
+  const grown = growth >= 1
   return (
     <aside className="fish-pop glass" aria-label={`${fish.name} information`}>
       <div className="pop-head">
@@ -401,6 +404,7 @@ function FishInfoCard() {
       {fish.inheritance && (
         <p className="pop-note">
           🌈 Shape from {fish.inheritance.bodyParentName} · colours from {fish.inheritance.colorParentName}
+          {fish.inheritance.pattern && hasPatterns(species) ? ` · ${patternName(fish.inheritance.pattern)} pattern` : ''}
         </p>
       )}
       <p className="pop-desc">{def.description}</p>
@@ -439,17 +443,34 @@ function FishInfoCard() {
         >
           {destination === 'nursery' ? '🫧 Nursery' : '🐠 Aquarium'}
         </Button>
-        <Button variant="danger" onClick={() => setConfirmSell(true)}>
-          Sell · <Coin /> {price}
-        </Button>
+        <Button onClick={() => setConfirmSell(true)}>👋 Goodbye</Button>
       </div>
       {confirmSell && (
         <div className="pop-confirm">
-          <p>
-            Sell {fish.name} for <Coin /> {price}? This little fish will leave your tanks.{busy ? ' Their friendship visit will end.' : ''}
-          </p>
+          {grown ? (
+            <p>
+              🌊 Let {fish.name} swim free in your Open Ocean? You'll get <Coin /> {price} and XP, and you can visit it in the Fishpedia's Ocean page any
+              time.{busy ? ' Their friendship visit will end.' : ''}
+            </p>
+          ) : (
+            <p>
+              {fish.name} is still growing ({Math.round(growth * 100)}%). Grown-up fish can be released to the Open Ocean. You can sell it now for <Coin />{' '}
+              {price}.{busy ? ' Their friendship visit will end.' : ''}
+            </p>
+          )}
           <div>
             <Button onClick={() => setConfirmSell(false)}>Keep</Button>
+            {grown && (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  if (releaseFish(fish.id) !== null) selectFish(null)
+                  else setConfirmSell(false)
+                }}
+              >
+                🌊 Release
+              </Button>
+            )}
             <Button
               variant="danger"
               onClick={() => {
@@ -463,7 +484,7 @@ function FishInfoCard() {
                 }
               }}
             >
-              Sell fish
+              Sell · <Coin /> {price}
             </Button>
           </div>
         </div>

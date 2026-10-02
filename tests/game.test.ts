@@ -928,7 +928,7 @@ test('visitors are recorded once, leave gifts that pay once, and drop by while y
 test('a shared tank link round-trips the tank, keeps names private, and survives tampering', async () => {
   const { encodeTank, decodeTank, packTank, unpackTank, shareCodeFrom, shareLink, visitState, DEFAULT_SHARED_NAME } = await import('../src/state/share')
   const s = store.getState()
-  const fish = s.ownedFish.map((f, i) => (i === 0 ? { ...f, inheritance: { bodyParentName: 'Mum', colorParentName: 'Dad', bodyParentId: 'a', colorParentId: 'b', color: '#7a3cff', color2: '#ffd24a', morph: 'aurora' as const } } : f))
+  const fish = s.ownedFish.map((f, i) => (i === 0 ? { ...f, inheritance: { bodyParentName: 'Mum', colorParentName: 'Dad', bodyParentId: 'a', colorParentId: 'b', color: '#7a3cff', color2: '#ffd24a', morph: 'aurora' as const, pattern: 'tiger' as const } } : f))
   const tank = { ...s, aquariumName: 'Sparkle Reef', ownedFish: fish }
   for (const code of [await encodeTank(tank), `j${Buffer.from(JSON.stringify(packTank(tank))).toString('base64url')}`]) {
     const back = (await decodeTank(code))!
@@ -939,6 +939,7 @@ test('a shared tank link round-trips the tank, keeps names private, and survives
     assert.ok(back.fish.every((f) => f.name === getFishDef(f.defId)!.name))
     assert.equal(back.fish[0].inheritance?.color, '#7a3cff')
     assert.equal(back.fish[0].inheritance?.morph, 'aurora')
+    assert.equal(back.fish[0].inheritance?.pattern, 'tiger')
     assert.equal(back.fish[0].inheritance?.bodyParentName, '')
     assert.equal(shareCodeFrom(shareLink(code, 'https://example.com/game/')), code)
   }
@@ -1013,4 +1014,146 @@ test('fish personalities are stable, favourites are gettable, and happy schools 
 
   // Every species has a fun fact.
   for (const def of FISH_CATALOG) assert.ok(FISH_FACTS[def.id], `fact for ${def.id}`)
+})
+
+test('releasing grown fish to the Open Ocean pays like a sale, keeps them in the ocean, and raises the tide forever', async () => {
+  const { tideFor, tideThreshold, tideReward, oceanTotals } = await import('../src/state/ocean')
+  assert.equal(tideFor(0), 0)
+  assert.equal(tideFor(3), 1)
+  assert.equal(tideFor(149), 8)
+  assert.equal(tideFor(150), 9)
+  assert.equal(tideFor(195), 10)
+  for (let t = 1; t < 30; t++) assert.ok(tideThreshold(t + 1) > tideThreshold(t))
+  assert.ok(tideReward(5).coins > tideReward(1).coins)
+
+  const [baby, ...grown] = store.getState().ownedFish
+  store.setState({ fishVitals: { ...store.getState().fishVitals, [baby.id]: freshVitals(), ...Object.fromEntries(grown.map((f) => [f.id, { hunger: 0.2, growth: 1, mealsEaten: 9 }])) } })
+  // Babies can only be sold.
+  assert.equal(store.getState().releaseFish(baby.id), null)
+  assert.ok(store.getState().ownedFish.some((f) => f.id === baby.id))
+
+  const target = grown[0]
+  const price = store.getState().salePrice(target.id)
+  const coins = store.getState().currency
+  const xp = store.getState().xp
+  assert.equal(store.getState().releaseFish(target.id), price)
+  const s = store.getState()
+  assert.ok(!s.ownedFish.some((f) => f.id === target.id))
+  assert.equal(s.currency, coins + price)
+  assert.ok(s.xp > xp)
+  assert.equal(s.ocean.at(-1)!.name, target.name)
+  assert.equal(s.stats.released, 1)
+  assert.equal(store.getState().releaseFish(target.id), null)
+
+  // Reaching a tide pays coins and treats.
+  store.setState({ stats: { ...store.getState().stats, released: 2 } })
+  const before = store.getState()
+  const reward = tideReward(1)
+  store.getState().releaseFish(grown[1].id)
+  const after = store.getState()
+  assert.equal(oceanTotals(after).tide, 1)
+  assert.ok(after.currency >= before.currency + reward.coins)
+  assert.equal(after.treats[reward.treat], (before.treats[reward.treat] ?? 0) + reward.treatCount)
+
+  // The ocean is saved, and odd entries are dropped.
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  assert.equal(migrate({ ...saved }, 6).ocean.length, 2)
+  assert.deepEqual(migrate({ ...saved, ocean: [{ id: 'x', defId: 'nope', name: 'X', at: 1 }, 'junk'] }, 6).ocean, [])
+})
+
+test('seasons follow the calendar, sell their pieces only in season, and bring their own visitors', async () => {
+  const { seasonOn, SEASONS } = await import('../src/state/seasons')
+  const { checkPurchase: check, purchaseProblem: problem } = await import('../src/state/rules')
+  const { canVisit, getVisitor, YEAR_ROUND, VISITORS } = await import('../src/state/visitors')
+  const day = (m: number, d: number) => new Date(2026, m - 1, d, 12)
+  assert.equal(seasonOn(day(10, 1))?.id, 'spooky-seas')
+  assert.equal(seasonOn(day(11, 2))?.id, 'spooky-seas')
+  assert.equal(seasonOn(day(11, 3)), null)
+  assert.equal(seasonOn(day(12, 25))?.id, 'winter-lights')
+  assert.equal(seasonOn(day(1, 6))?.id, 'winter-lights')
+  assert.equal(seasonOn(day(4, 1))?.id, 'spring-bloom')
+  assert.equal(seasonOn(day(7, 4))?.id, 'summer-reef')
+  // Every season has a piece in the shop and a visitor who loves it.
+  for (const s of SEASONS) {
+    const piece = DECORATION_CATALOG.find((d) => d.season === s.id)!
+    assert.ok(piece, s.id)
+    assert.ok(VISITORS.some((v) => v.needs.season === s.id && v.needs.any?.includes(piece.id)), `${s.id} visitor`)
+  }
+  assert.ok(YEAR_ROUND.every((v) => !v.needs.season))
+
+  const state = { ...store.getState(), currency: 10000 }
+  const current = seasonOn()
+  for (const piece of DECORATION_CATALOG.filter((d) => d.season)) {
+    const c = check(state, 'decorations', piece.id)
+    if (piece.season === current?.id) assert.ok(c.ok, piece.id)
+    else {
+      assert.equal(c.reason, 'season')
+      assert.match(problem(c, piece.name, 10000)!, /comes back for/)
+    }
+  }
+  const ghost = getVisitor('ghost-jelly')!
+  const pumpkin = [{ id: 'p', defId: 'jack-o-lantern', position: [0, 0, 0] as [number, number, number], rotationY: 0 }]
+  assert.equal(canVisit(ghost, pumpkin, 'day', day(10, 20)), true)
+  assert.equal(canVisit(ghost, pumpkin, 'any', day(3, 1)), false)
+})
+
+test('late-game helpers tidy waste and polish algae on their own', async () => {
+  const { bonusesFor } = await import('../src/state/bonuses')
+  const { runHelpers } = await import('../src/sim/helpers')
+  const { algaeCoverage, growAlgae } = await import('../src/sim/algae')
+  const place = (...ids: string[]) => ids.map((defId, i) => ({ id: `h${i}`, defId, position: [i - 1, 0, 0] as [number, number, number], rotationY: 0 }))
+  assert.equal(bonusesFor(place('rock-cluster')).tidy, false)
+  assert.equal(bonusesFor(place('robo-vac')).tidy, true)
+  assert.equal(bonusesFor(place('scrub-tower')).scrub, true)
+  for (const id of ['robo-vac', 'scrub-tower']) assert.ok(DECORATION_CATALOG.find((d) => d.id === id)!.unlockLevel >= 20)
+
+  store.setState({ placedDecorations: place('robo-vac', 'scrub-tower') })
+  store.getState().addWaste(0.5, 0.2, 'poop')
+  store.getState().addWaste(-0.5, 0.2, 'poop')
+  growAlgae(20 * 60, 0.5)
+  const algae = algaeCoverage()
+  for (let i = 0; i < 25; i++) runHelpers(1)
+  assert.equal(store.getState().waste.length, 1)
+  assert.ok(algaeCoverage() < algae)
+})
+
+test('patterns pass from either parent, matching parents can surprise, and the Fishpedia collects them', async () => {
+  const { rollPattern, patternOf, PATTERNS, SURPRISE_CHANCE, PATTERN_COINS, patternsFound } = await import('../src/state/patterns')
+  const seq = (...values: number[]) => () => values.shift() ?? 0.5
+  // Different parents: one or the other, never a surprise.
+  assert.equal(rollPattern('spots', 'stripe', seq(0.1)), 'spots')
+  assert.equal(rollPattern('spots', 'stripe', seq(0.9)), 'stripe')
+  for (let i = 0; i < 200; i++) assert.ok(['spots', 'stripe'].includes(rollPattern('spots', 'stripe')))
+  // Matching parents: usually theirs, sometimes something neither has.
+  assert.equal(rollPattern('spots', 'spots', seq(SURPRISE_CHANCE + 0.01, 0.2)), 'spots')
+  const surprise = rollPattern('spots', 'spots', seq(0, 0.99))
+  assert.notEqual(surprise, 'spots')
+  let surprises = 0
+  for (let i = 0; i < 2000; i++) if (rollPattern('tiger', 'tiger') !== 'tiger') surprises++
+  assert.ok(surprises > 300 && surprises < 500, `surprises ${surprises}`)
+
+  // Eggs carry a pattern for fish bodies only, and babies wear it.
+  const mk = (defId: string, pattern?: string) => ({ id: crypto.randomUUID(), defId, name: defId, bornAt: 0, habitat: 'nursery' as const, sizeScale: 1, ...(pattern ? { inheritance: { bodyParentName: '', colorParentName: '', bodyParentId: '', colorParentId: '', color: '#ff0000', color2: '#00ff00', pattern: pattern as 'spots' } } : {}) })
+  const egg = createNurseryEgg(mk('goldfish'), mk('goldfish', 'spots'))
+  assert.ok(['gradient', 'spots'].includes(egg.inheritance!.pattern!))
+  assert.equal(createNurseryEgg(mk('seahorse'), mk('seahorse')).inheritance!.pattern, undefined)
+  const baby = { ...mk('goldfish'), inheritance: { ...egg.inheritance!, pattern: 'tiger' as const } }
+  assert.equal(inheritedDefinition(baby)!.pattern, 'tiger')
+  assert.equal(patternOf(mk('clownfish')), 'bands')
+
+  // A new pattern goes in the book once, with a reward; a species' own pattern is already there.
+  const before = recordFish({}, [mk('goldfish')], false).book
+  const found = recordFish(before, [baby], true)
+  assert.deepEqual(found.patterns, [{ defId: 'goldfish', pattern: 'tiger' }])
+  const reward = discoveryRewards(before, found)
+  assert.ok(reward.coins >= PATTERN_COINS)
+  assert.deepEqual(recordFish(found.book, [baby], true).patterns, [])
+  assert.deepEqual([...patternsFound(getFishDef('goldfish')!, found.book.goldfish)].sort(), ['gradient', 'tiger'])
+  assert.equal(PATTERNS.length, 9)
+
+  // Saves keep good patterns and drop junk.
+  const saved = migrate({ ...store.getState(), fishpedia: { goldfish: { discoveredAt: 1, patterns: ['tiger', 'nope', 'gradient'] } } } as never, 6)
+  assert.deepEqual(saved.fishpedia.goldfish.patterns, ['tiger'])
+  const eggSave = migrate({ ...store.getState(), ownedFish: [{ ...baby, habitat: 'main', inheritance: { ...baby.inheritance, pattern: 'plaid' } }] } as never, 6)
+  assert.equal(eggSave.ownedFish[0].inheritance?.pattern, undefined)
 })

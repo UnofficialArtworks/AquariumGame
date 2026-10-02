@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useGameStore } from '../state/useGameStore'
 import { useUIStore } from '../state/useUIStore'
 import { levelFromXp } from '../state/progression'
 import { FISH_CATALOG, getFishDef, isCleanupCrew } from '../scene/fish/fishDefinitions'
 import { BRED_COINS, DISCOVERY_XP, FISHPEDIA_MILESTONES, fishpediaTotals, milestoneCoins, MORPH_COINS } from '../state/fishpedia'
-import { MORPHS } from '../state/morphs'
 import { getEggCountRange } from '../state/nursery'
 import { fishPreviewKey, usePreviewStore, visitorPreviewKey } from '../state/usePreviewStore'
 import type { FishDefinition, FishpediaEntry, Rarity } from '../state/types'
@@ -14,6 +13,11 @@ import { Button } from './components/Button'
 import { Coin } from './Coin'
 import { canVisit, VISITORS, visitorTotals } from '../state/visitors'
 import { FISH_FACTS } from '../state/facts'
+import { oceanTotals, tideReward } from '../state/ocean'
+import { getSeason, inSeason } from '../state/seasons'
+import { hasPatterns, PATTERNS, patternsFound } from '../state/patterns'
+import { getFoodDef } from '../scene/food/foodDefinitions'
+import { getMorph, MORPHS } from '../state/morphs'
 
 const RARITIES: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary']
 const ZONES: Record<FishDefinition['zone'], string> = {
@@ -26,7 +30,7 @@ const ZONES: Record<FishDefinition['zone'], string> = {
 const BOOK_ORDER = RARITIES.flatMap((r) => FISH_CATALOG.filter((d) => d.rarity === r).sort((a, b) => a.unlockLevel - b.unlockLevel))
 
 type Filter = 'all' | 'found' | 'missing'
-type Book = 'fish' | 'visitors'
+type Book = 'fish' | 'visitors' | 'ocean'
 
 /** The collection book: every species and rare morph, silhouettes until you find them. */
 export function Fishpedia() {
@@ -47,11 +51,98 @@ export function Fishpedia() {
             <button role="tab" aria-selected={book === 'visitors'} className={`subtab ${book === 'visitors' ? 'is-active' : ''}`} onClick={() => setBook('visitors')}>
               <span>✨</span> Visitors
             </button>
+            <button role="tab" aria-selected={book === 'ocean'} className={`subtab ${book === 'ocean' ? 'is-active' : ''}`} onClick={() => setBook('ocean')}>
+              <span>🌊</span> Ocean
+            </button>
           </div>
-          {book === 'fish' ? <Overview /> : <VisitorBook />}
+          {book === 'fish' ? <Overview /> : book === 'visitors' ? <VisitorBook /> : <OceanBook />}
         </>
       )}
     </Modal>
+  )
+}
+
+/** Fish you've released, still swimming in your Open Ocean, and the tide they've raised. */
+function OceanBook() {
+  const ocean = useGameStore((s) => s.ocean)
+  const stats = useGameStore((s) => s.stats)
+  const totals = oceanTotals({ ocean, stats })
+  const shown = ocean.slice(-24)
+  const reward = tideReward(totals.tide + 1)
+
+  // Morph thumbnails are made on demand.
+  useEffect(() => {
+    usePreviewStore.getState().requestPreviews(
+      ocean
+        .filter((f) => f.morph || f.pattern)
+        .map((f) => ({ key: fishPreviewKey(f.defId, f.morph, f.pattern), kind: 'fish' as const, defId: f.defId, morph: f.morph, pattern: f.pattern })),
+    )
+  }, [ocean])
+
+  return (
+    <div className="pedia">
+      <div className="ocean-view" aria-label="Your Open Ocean">
+        <span className="ocean-rays" aria-hidden />
+        {shown.length === 0 && (
+          <p className="ocean-empty">
+            Your ocean is waiting for its first fish. When a fish is fully grown, tap it, choose <strong>👋 Goodbye</strong>, then <strong>🌊 Release</strong>.
+          </p>
+        )}
+        {shown.map((f, i) => {
+          const def = getFishDef(f.defId)
+          const left = i % 2 === 1
+          const seed = (i * 7919 + f.name.length * 31) % 100
+          return (
+            <span
+              key={f.id}
+              className={`ocean-fish ${left ? 'is-left' : ''}`}
+              title={`${f.name} the ${def?.name ?? 'fish'}`}
+              style={{ '--y': `${6 + ((i * 37) % 68)}%`, '--d': `${22 + (seed % 16)}s`, '--delay': `-${(seed * 0.37).toFixed(1)}s` } as CSSProperties}
+            >
+              <ItemThumbnail previewKey={fishPreviewKey(f.defId, f.morph, f.pattern)} color={def?.color ?? '#7fd3ff'} className="ocean-thumb" />
+            </span>
+          )
+        })}
+      </div>
+      <div className="pedia-summary">
+        <div className="pedia-stat">
+          <strong>Tide {totals.tide}</strong>
+          <span>
+            {totals.nextAt - totals.released} more to Tide {totals.tide + 1}
+          </span>
+          <span className="bar">
+            <span style={{ width: `${((totals.released - totals.fromAt) / (totals.nextAt - totals.fromAt)) * 100}%` }} />
+          </span>
+        </div>
+        <div className="pedia-stat">
+          <strong>{totals.released}</strong>
+          <span>Fish released</span>
+        </div>
+        <div className="pedia-stat">
+          <strong>
+            {totals.species}
+            <small>/{FISH_CATALOG.length}</small>
+          </strong>
+          <span>Ocean stamps</span>
+        </div>
+      </div>
+      <p className="pedia-next">
+        Next tide: <Coin /> {reward.coins} and {reward.treatCount} {getFoodDef(reward.treat).name}. Every tide pays out, and the tides never stop rising.
+      </p>
+      {ocean.length > 0 && (
+        <ul className="ocean-log">
+          {[...ocean]
+            .reverse()
+            .slice(0, 12)
+            .map((f) => (
+              <li key={f.id}>
+                <strong>{f.name}</strong> the {getFishDef(f.defId)?.name}
+                {f.morph ? ` ${getMorph(f.morph)?.icon ?? ''}` : ''} <small>{new Date(f.at).toLocaleDateString()}</small>
+              </li>
+            ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -100,7 +191,9 @@ function VisitorBook() {
                 <small>
                   {here === v.id
                     ? '👀 Visiting right now!'
-                    : record
+                    : v.needs.season && !inSeason(v.needs.season)
+                      ? `📅 Back for ${getSeason(v.needs.season)?.name} (${getSeason(v.needs.season)?.when})${record ? ` · ${record.visits} visit${record.visits === 1 ? '' : 's'}` : ''}`
+                      : record
                       ? `Comes for: ${v.likes} · ${record.visits} visit${record.visits === 1 ? '' : 's'}`
                       : ready && !now
                         ? '🌙 Your tank is ready. It comes after dark.'
@@ -151,6 +244,11 @@ function Overview() {
           <strong>{totals.morphs}<small>/{totals.morphsTotal}</small></strong>
           <span>Rare morphs</span>
           <span className="bar"><span style={{ width: `${(totals.morphs / totals.morphsTotal) * 100}%` }} /></span>
+        </div>
+        <div className="pedia-stat">
+          <strong>{totals.patterns}<small>/{totals.patternsTotal}</small></strong>
+          <span>Patterns</span>
+          <span className="bar"><span style={{ width: `${(totals.patterns / totals.patternsTotal) * 100}%` }} /></span>
         </div>
       </div>
 
@@ -235,10 +333,15 @@ function EntryPage({ defId }: { defId: string }) {
   const locked = !found && def.unlockLevel > level
   const [eggsMin, eggsMax] = getEggCountRange(defId)
 
-  // Morph thumbnails are rendered on demand, the first time a page is opened.
+  // Morph and pattern thumbnails are rendered on demand, the first time a page is opened.
   useEffect(() => {
-    usePreviewStore.getState().requestPreviews(MORPHS.map((m) => ({ key: fishPreviewKey(defId, m.id), kind: 'fish' as const, defId, morph: m.id })))
+    const def = getFishDef(defId)
+    usePreviewStore.getState().requestPreviews([
+      ...MORPHS.map((m) => ({ key: fishPreviewKey(defId, m.id), kind: 'fish' as const, defId, morph: m.id })),
+      ...(hasPatterns(def) ? PATTERNS.map((p) => ({ key: fishPreviewKey(defId, undefined, p.id), kind: 'fish' as const, defId, pattern: p.id })) : []),
+    ])
   }, [defId])
+  const patterns = patternsFound(def, entry)
 
   const go = (step: number) => setPick(BOOK_ORDER[(index + step + BOOK_ORDER.length) % BOOK_ORDER.length].id)
   return (
@@ -338,6 +441,31 @@ function EntryPage({ defId }: { defId: string }) {
           )
         })}
       </div>
+      {hasPatterns(def) && (
+        <>
+          <h4 className="pedia-subhead">
+            Patterns <small>{patterns.size} of {PATTERNS.length}</small>
+          </h4>
+          <div className="pedia-morphs pedia-patterns">
+            {PATTERNS.map((p) => {
+              const has = patterns.has(p.id)
+              return (
+                <div key={p.id} className={`pedia-morph ${has ? 'is-found' : 'is-missing'}`}>
+                  <span className="pedia-art">
+                    <ItemThumbnail previewKey={fishPreviewKey(defId, undefined, p.id)} color={def.color} className="pedia-thumb" />
+                  </span>
+                  <strong>{has ? p.name : '???'}</strong>
+                  {p.id === def.pattern && <small>Its own pattern</small>}
+                </div>
+              )
+            })}
+          </div>
+          <p className="pedia-hint">
+            🎨 Babies get their pattern from one of their parents. When both parents wear the same pattern, there's a 1 in 5 chance of a surprise
+            pattern neither of them has. Patterns pass between species too.
+          </p>
+        </>
+      )}
       <p className="pedia-hint">
         First {def.name}: +{DISCOVERY_XP[def.rarity]} XP · first hatched in the nursery: +{BRED_COINS[def.rarity]} coins · each rare morph: +{MORPH_COINS} coins. A morph parent makes
         rare eggs much more likely.

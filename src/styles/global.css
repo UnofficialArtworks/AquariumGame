@@ -747,8 +747,8 @@ button:disabled {
   margin-top: 10px;
   padding: 10px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 122, 107, 0.4);
-  background: rgba(255, 122, 107, 0.1);
+  border: 1px solid rgba(110, 210, 255, 0.35);
+  background: rgba(110, 210, 255, 0.08);
   font-size: 0.78rem;
 }
 
@@ -758,6 +758,7 @@ button:disabled {
 
 .pop-confirm div {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
 }
@@ -2024,7 +2025,7 @@ button:disabled {
 
 .pedia-summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 8px;
 }
 
@@ -2365,7 +2366,7 @@ button:disabled {
 
 @media (max-width: 520px) {
   .pedia-summary {
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 6px;
   }
 
@@ -3140,4 +3141,148 @@ button:disabled {
 
 .pedia-fact strong {
   color: #ffe9a8;
+}
+
+/* --- open ocean --------------------------------------------------------------------- */
+
+.ocean-view {
+  position: relative;
+  height: 210px;
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% -20%, rgba(170, 235, 255, 0.55), transparent 60%),
+    linear-gradient(180deg, #1f8fc4 0%, #0d5a8f 45%, #06294d 100%);
+  border: 1px solid var(--line);
+}
+
+.ocean-rays {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(105deg, rgba(255, 255, 255, 0.07) 0 18px, transparent 18px 60px);
+  mask-image: linear-gradient(180deg, #000, transparent 75%);
+  animation: ocean-rays 14s linear infinite;
+}
+
+@keyframes ocean-rays {
+  to {
+    background-position: 240px 0;
+  }
+}
+
+.ocean-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: rgba(236, 251, 255, 0.85);
+}
+
+.ocean-fish {
+  position: absolute;
+  top: var(--y);
+  left: -90px;
+  width: 78px;
+  height: 62px;
+  animation: ocean-swim-right var(--d) linear infinite;
+  animation-delay: var(--delay);
+}
+
+.ocean-fish.is-left {
+  animation-name: ocean-swim-left;
+}
+
+.ocean-thumb {
+  transform: scale(1.4);
+}
+
+.ocean-fish.is-left .ocean-thumb {
+  transform: scale(-1.4, 1.4);
+}
+
+.ocean-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  animation: ocean-bob 3.2s ease-in-out infinite;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+}
+
+.ocean-thumb-fallback {
+  display: block;
+  width: 26px;
+  height: 14px;
+  margin: 24px auto;
+  border-radius: 50%;
+}
+
+@keyframes ocean-swim-right {
+  from {
+    left: -90px;
+  }
+  to {
+    left: calc(100% + 10px);
+  }
+}
+
+@keyframes ocean-swim-left {
+  from {
+    left: calc(100% + 10px);
+  }
+  to {
+    left: -90px;
+  }
+}
+
+@keyframes ocean-bob {
+  50% {
+    translate: 0 6px;
+  }
+}
+
+.ocean-log {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.ocean-log strong {
+  color: var(--ink);
+}
+
+.ocean-log small {
+  margin-left: 6px;
+  color: var(--ink-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ocean-fish,
+  .ocean-thumb,
+  .ocean-rays {
+    animation-play-state: paused;
+  }
+}
+
+.season-banner {
+  margin: -4px 0 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 166, 77, 0.35);
+  background: linear-gradient(90deg, rgba(255, 138, 30, 0.16), rgba(255, 210, 74, 0.06));
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.pedia-patterns {
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
 }

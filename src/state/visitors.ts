@@ -8,6 +8,7 @@ import { getFishDef } from '../scene/fish/fishDefinitions'
 import { getDecorationDef } from '../scene/decorations/decorationDefinitions'
 import { clampToInterior, INTERIOR_HALF_DEPTH, INTERIOR_HALF_WIDTH } from '../scene/TankBounds'
 import { beautyOf, type SetStyle } from './beauty'
+import { inSeason, type SeasonId } from './seasons'
 
 /** Which body a visitor borrows: most reuse a creature rig in new colours. */
 export type VisitorRig = 'fish' | 'seahorse' | 'jelly' | 'turtle' | 'shrimp' | 'crab' | 'hermit'
@@ -23,6 +24,8 @@ export interface VisitorNeeds {
   style?: { style: SetStyle; count: number }
   /** Tank beauty stars. */
   stars?: number
+  /** Only during this season (it comes back every year). */
+  season?: SeasonId
 }
 
 export interface VisitorDef {
@@ -255,6 +258,61 @@ export function visitorName(v: VisitorDef, { definite = false, start = false } =
   return `${start ? article[0].toUpperCase() + article.slice(1) : article} ${v.name}`
 }
 
+VISITORS.push(
+  {
+    id: 'petal-goby',
+    name: 'Petal Goby',
+    icon: '🌸',
+    rarity: 'rare',
+    description: 'A blushing pink goby that drifts in on the spring currents, trailing petals.',
+    hint: 'A Spring Bloom guest (March 20 to May 31) who adores blossoms.',
+    likes: 'Blossom Coral, during Spring Bloom',
+    rig: 'fish',
+    look: look(null, 'petal-goby', { color: '#ffd1e4', color2: '#ff7fb3', pattern: 'spots', finStyle: 'fan', features: ['bigEyes'], bodyLength: 0.24, bodyHeight: 0.11 }),
+    needs: { any: ['blossom-coral'], season: 'spring-bloom' },
+    gift: 1.5,
+  },
+  {
+    id: 'sunny-sunfish',
+    name: 'Sunny Sunfish',
+    icon: '🌞',
+    rarity: 'rare',
+    description: 'A round, beaming sunfish on its summer holidays. It loves a good sandcastle.',
+    hint: 'A Summer Reef guest (June 21 to August 31) who is on holiday at the beach.',
+    likes: 'A Sandcastle, during Summer Reef',
+    rig: 'fish',
+    look: look('discus', 'sunny-sunfish', { color: '#ffd23f', color2: '#ff8a3c', pattern: 'gradient' }),
+    needs: { any: ['sandcastle'], season: 'summer-reef' },
+    gift: 1.5,
+  },
+  {
+    id: 'ghost-jelly',
+    name: 'Ghost Jelly',
+    icon: '👻',
+    rarity: 'rare',
+    description: 'Boo! A friendly little ghost that floats by to admire your pumpkin.',
+    hint: 'A Spooky Seas guest (October 1 to November 2) who follows a pumpkin glow.',
+    likes: "A Jack-o'-Lantern, during Spooky Seas",
+    rig: 'jelly',
+    look: look('moon-jelly', 'ghost-jelly', { color: '#e9fff2', color2: '#9dffb8' }),
+    needs: { any: ['jack-o-lantern'], season: 'spooky-seas' },
+    gift: 1.5,
+  },
+  {
+    id: 'frost-puffer',
+    name: 'Frost Puffer',
+    icon: '❄️',
+    rarity: 'rare',
+    description: 'An icy-blue puffer with frosty spikes, here to say hello to the snowman.',
+    hint: 'A Winter Lights guest (December 1 to January 6) who loves snowy friends.',
+    likes: 'A Sea Snowman, during Winter Lights',
+    rig: 'fish',
+    look: look('pufferfish', 'frost-puffer', { color: '#dff4ff', color2: '#6fb8e8', pattern: 'spots' }),
+    needs: { any: ['sea-snowman'], season: 'winter-lights' },
+    gift: 1.5,
+  },
+)
+
 export function getVisitor(id: string): VisitorDef | undefined {
   return VISITORS.find((v) => v.id === id)
 }
@@ -262,9 +320,10 @@ export function getVisitor(id: string): VisitorDef | undefined {
 /** When it is: 'any' ignores day and night (used for visits while you were away). */
 export type VisitTime = 'day' | 'night' | 'any'
 
-export function canVisit(v: VisitorDef, placed: DecorationInstance[], time: VisitTime): boolean {
+export function canVisit(v: VisitorDef, placed: DecorationInstance[], time: VisitTime, date = new Date()): boolean {
   const n = v.needs
   if (n.night && time === 'day') return false
+  if (n.season && !inSeason(n.season, date)) return false
   const has = new Set(placed.map((d) => d.defId))
   if (n.all && !n.all.every((id) => has.has(id))) return false
   if (n.any && !n.any.some((id) => has.has(id))) return false
@@ -276,8 +335,8 @@ export function canVisit(v: VisitorDef, placed: DecorationInstance[], time: Visi
   return true
 }
 
-export function eligibleVisitors(placed: DecorationInstance[], time: VisitTime): VisitorDef[] {
-  return VISITORS.filter((v) => canVisit(v, placed, time))
+export function eligibleVisitors(placed: DecorationInstance[], time: VisitTime, date = new Date()): VisitorDef[] {
+  return VISITORS.filter((v) => canVisit(v, placed, time, date))
 }
 
 export interface VisitorRecord {
@@ -346,6 +405,9 @@ export const FIRST_VISIT_XP: Record<Rarity, number> = { common: 15, uncommon: 25
 export const AWAY_VISIT_SECONDS = 20 * 60
 export const MAX_AWAY_VISITS = 3
 
+/** Visitors who can come any time of year (seasonal ones come back every year). */
+export const YEAR_ROUND = VISITORS.filter((v) => !v.needs.season)
+
 export function visitorTotals(log: VisitorLog) {
-  return { met: VISITORS.filter((v) => log[v.id]).length, total: VISITORS.length }
+  return { met: VISITORS.filter((v) => log[v.id]).length, total: VISITORS.length, yearRound: YEAR_ROUND.filter((v) => log[v.id]).length }
 }

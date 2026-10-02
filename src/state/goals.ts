@@ -7,7 +7,8 @@ import type { GameState, GameStats } from './types'
 import { levelFromXp } from './progression'
 import { fishpediaTotals } from './fishpedia'
 import { beautyOf } from './beauty'
-import { eligibleVisitors, VISITORS, visitorTotals } from './visitors'
+import { eligibleVisitors, visitorTotals, YEAR_ROUND } from './visitors'
+import { tideFor } from './ocean'
 import { hashString, mulberry32 } from '../utils/rng'
 
 export type StatKey = keyof GameStats
@@ -148,6 +149,8 @@ export interface Trophy {
 
 const stat = (key: StatKey) => (s: GameState) => s.stats[key] ?? 0
 const mainFish = (s: GameState) => s.ownedFish.filter((f) => f.habitat === 'main').length
+/** Patterns hatched that a species doesn't wear by nature. */
+const newPatterns = (s: GameState) => Object.values(s.fishpedia).reduce((n, e) => n + (e.patterns?.length ?? 0), 0)
 
 export const TROPHIES: Trophy[] = [
   { id: 'first-bites', icon: '🍤', name: 'Dinner Bell', text: 'Your fish eat 100 bites', target: 100, coins: 50, progress: stat('foodEaten') },
@@ -186,12 +189,25 @@ export const TROPHIES: Trophy[] = [
     id: 'visitors-all',
     icon: '📒',
     name: 'Guest Book',
-    text: 'Meet every visitor',
-    target: VISITORS.length,
+    text: 'Meet every year-round visitor',
+    target: YEAR_ROUND.length,
     coins: 800,
-    progress: (s) => visitorTotals(s.visitors).met,
+    progress: (s) => visitorTotals(s.visitors).yearRound,
   },
   { id: 'gifts', icon: '🎁', name: 'Gift Collector', text: 'Open 25 visitor gifts', target: 25, coins: 250, progress: stat('giftsOpened') },
+  { id: 'patterns-5', icon: '🎨', name: 'Pattern Spotter', text: 'Hatch 5 new patterns', target: 5, coins: 250, progress: (s) => newPatterns(s) },
+  {
+    id: 'pattern-set',
+    icon: '🖼️',
+    name: 'Full Set',
+    text: 'Find all 9 patterns for one species',
+    target: 9,
+    coins: 1000,
+    progress: (s) => fishpediaTotals(s.fishpedia).fullSet,
+  },
+  { id: 'release-1', icon: '🌊', name: 'Swim Free', text: 'Release a grown fish to the Open Ocean', target: 1, coins: 100, progress: stat('released') },
+  { id: 'release-10', icon: '🐬', name: 'Ocean Friend', text: 'Release 10 fish to the Open Ocean', target: 10, coins: 300, progress: stat('released') },
+  { id: 'tide-5', icon: '🌅', name: 'High Tide', text: 'Raise the ocean to Tide 5', target: 5, coins: 800, progress: (s) => tideFor(s.stats.released) },
   { id: 'level-10', icon: '⭐', name: 'Rising Star', text: 'Reach level 10', target: 10, coins: 200, progress: (s) => levelFromXp(s.xp).level },
   { id: 'level-20', icon: '🌠', name: 'Shining Star', text: 'Reach level 20', target: 20, coins: 400, progress: (s) => levelFromXp(s.xp).level },
   { id: 'level-30', icon: '🏆', name: 'Aquarium Legend', text: 'Reach level 30', target: 30, coins: 1000, progress: (s) => levelFromXp(s.xp).level },

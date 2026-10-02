@@ -17,14 +17,14 @@ import { SeaTurtleVisual } from '../creatures/SeaTurtle'
 import { PreviewContext } from '../decorations/decorationHooks'
 import { aquaUniforms } from '../materials/aquaShader'
 import { morphedDefinition } from '../../state/morphs'
-import type { MorphId } from '../../state/types'
+import type { MorphId, PatternType } from '../../state/types'
 import { getVisitor } from '../../state/visitors'
 import { VisitorVisual } from '../visitors/VisitorVisual'
 
 const PREVIEW_PIXELS = 160
 const VIEW_DIRECTION = new THREE.Vector3(0.6, 0.55, 1).normalize()
 
-function TargetContent({ defId, kind, morph }: { defId: string; kind: PreviewKind; morph?: MorphId }) {
+function TargetContent({ defId, kind, morph, pattern }: { defId: string; kind: PreviewKind; morph?: MorphId; pattern?: PatternType }) {
   if (kind === 'visitor') {
     const visitor = getVisitor(defId)
     return visitor ? <VisitorVisual visitor={visitor} /> : null
@@ -32,7 +32,7 @@ function TargetContent({ defId, kind, morph }: { defId: string; kind: PreviewKin
   if (kind === 'fish') {
     const species = getFishDef(defId)
     if (!species) return null
-    const def = morphedDefinition(species, morph)
+    const def = morphedDefinition(pattern ? { ...species, pattern } : species, morph)
     if (def.kind === 'jellyfish') return <JellyfishVisual def={def} />
     if (def.kind === 'seahorse') return <SeahorseVisual def={def} />
     if (def.kind === 'axolotl') return <AxolotlVisual def={def} />
@@ -49,7 +49,7 @@ function TargetContent({ defId, kind, morph }: { defId: string; kind: PreviewKin
 }
 
 /** Frame and capture a thumbnail with isolated lighting, then restore tank uniforms. */
-function CaptureRig({ defId, kind, morph, onCaptured }: { defId: string; kind: PreviewKind; morph?: MorphId; onCaptured: (dataUrl: string) => void }) {
+function CaptureRig({ defId, kind, morph, pattern, onCaptured }: { defId: string; kind: PreviewKind; morph?: MorphId; pattern?: PatternType; onCaptured: (dataUrl: string) => void }) {
   const contentRef = useRef<THREE.Group>(null)
   const captured = useRef(false)
   const { gl, camera, scene } = useThree()
@@ -85,7 +85,7 @@ function CaptureRig({ defId, kind, morph, onCaptured }: { defId: string; kind: P
     onCaptured(dataUrl)
   }, 1)
 
-  return <group ref={contentRef}><TargetContent defId={defId} kind={kind} morph={morph} /></group>
+  return <group ref={contentRef}><TargetContent defId={defId} kind={kind} morph={morph} pattern={pattern} /></group>
 }
 
 function PreviewScene() {
@@ -105,6 +105,7 @@ function PreviewScene() {
         defId={current.defId}
         kind={current.kind}
         morph={current.morph}
+        pattern={current.pattern}
         onCaptured={(dataUrl) => {
           setImage(current.key, dataUrl)
           advanceQueue()

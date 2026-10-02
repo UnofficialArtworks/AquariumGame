@@ -1,5 +1,6 @@
 import { getFishDef, sampleFishSize } from '../scene/fish/fishDefinitions'
 import { morphedDefinition, rollMorph } from './morphs'
+import { hasPatterns, patternOf, rollPattern } from './patterns'
 import { NURSERY_CAPACITY } from './economy'
 import { pickFishName } from './names'
 import { freshVitals } from './migrations'
@@ -9,8 +10,8 @@ import type { FishInstance, GameState, NurseryEgg } from './types'
 export function inheritedDefinition(fish: Pick<FishInstance, 'defId' | 'inheritance'>) {
   const def = getFishDef(fish.defId)
   if (!def || !fish.inheritance) return def
-  const { color, color2, color3, morph } = fish.inheritance
-  return morphedDefinition({ ...def, color, color2, color3 }, morph)
+  const { color, color2, color3, morph, pattern } = fish.inheritance
+  return morphedDefinition({ ...def, color, color2, color3, ...(pattern && hasPatterns(def) ? { pattern } : {}) }, morph)
 }
 
 /** A fish's own colours underneath any morph it wears. */
@@ -27,6 +28,8 @@ export function createNurseryEgg(first: FishInstance, second: FishInstance, crea
   const palette = basePalette(colors)
   const morph = rollMorph([first.inheritance?.morph, second.inheritance?.morph])
   const hatchSeconds = sampleEggHatchSeconds(body.defId)
+  // The pattern comes from either parent, with a chance of a surprise when theirs match.
+  const pattern = hasPatterns(getFishDef(body.defId)) ? rollPattern(patternOf(first), patternOf(second)) : undefined
   return {
     id: crypto.randomUUID(), defId: body.defId, createdAt, hatchSeconds, remainingSeconds: hatchSeconds,
     inheritance: {
@@ -34,6 +37,7 @@ export function createNurseryEgg(first: FishInstance, second: FishInstance, crea
       bodyParentId: body.id, colorParentId: colors.id,
       color: palette.color, color2: palette.color2, color3: palette.color3,
       ...(morph ? { morph } : {}),
+      ...(pattern ? { pattern } : {}),
     },
   }
 }

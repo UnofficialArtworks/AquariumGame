@@ -9,9 +9,11 @@ A cozy 3D aquarium you can play right in your browser. Fill a tank with fish, de
 - **Collect fish and sea creatures.** Start with a few friendly fish and work your way up to seahorses, jellyfish, a sea turtle, an octopus and a few legendary surprises.
 - **Decorate.** Place plants, corals, castles, shipwrecks and more anywhere in the tank, then choose the scene behind it, the gravel and the stand it sits on. Some decorations are gadgets with handy perks, like an auto-feeder.
 - **Feed your fish.** Sprinkle food and watch them swim over to eat. Hungry fish get first bite. Special treats make fish sparkle, glow, or zoom around.
-- **Keep the tank clean.** Scrub algae off the glass, vacuum the gravel and change the water. Better cleaning tools unlock as you go.
-- **Raise baby fish.** Two grown fish can become friends in the nursery and welcome a clutch of eggs. Babies take their shape from one parent and their colors from the other, and once in a while a rare color appears.
+- **Keep the tank clean.** Scrub algae off the glass, vacuum the gravel and change the water. Better cleaning tools unlock as you go, and later on, helper gadgets can tidy up for you.
+- **Raise baby fish.** Two grown fish can become friends in the nursery and welcome a clutch of eggs. Babies take their shape from one parent, their colors from the other and a pattern from either. Two parents with the same pattern can surprise you with a brand-new one, and once in a while a rare color appears.
 - **Welcome visitors.** Special guests like a Treasure Crab, a Hermit Crab or a Leafy Sea Dragon drop by when your tank has something they love. They stay a little while and leave a gift. The Fishpedia gives a hint for each one, so you can work out how to meet them all.
+- **Release fish to the Open Ocean.** When a fish is fully grown you can let it swim free. It lives on in your ocean, where you can watch it any time, and every fish you release raises the tide for rewards.
+- **Celebrate the seasons.** Spring Bloom, Summer Reef, Spooky Seas and Winter Lights each bring a decoration and a special visitor. They come back every year, so nobody misses out.
 - **Fill your Fishpedia.** Every species you meet goes in your collection book, with rewards for milestones.
 - **Make wishes come true.** Three small wishes each day, trophies to earn, and a beauty score that grows as you decorate with style.
 - **Share your tank.** Send a friend a link and they can look around your tank, fish and all. Or save a photo card with your tank's name on it.

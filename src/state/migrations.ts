@@ -13,6 +13,8 @@ import { getMorph } from './morphs'
 import { levelFromXp } from './progression'
 import { NO_WISHES, type DailyWishes } from './goals'
 import { getVisitor, MAX_GIFTS, type VisitorGift, type VisitorLog } from './visitors'
+import { MAX_OCEAN_FISH, type OceanFish } from './ocean'
+import { isPattern } from './patterns'
 
 export const CURRENT_SAVE_VERSION = 6
 
@@ -24,10 +26,10 @@ function backfillFishpedia(book: Fishpedia, ownedFish: FishInstance[]): Fishpedi
 }
 
 function sanitizeInheritance<T extends { inheritance?: FishInstance['inheritance'] }>(item: T): T {
-  const morph = item.inheritance?.morph
-  if (!morph || getMorph(morph)) return item
-  const { morph: _drop, ...rest } = item.inheritance!
-  return { ...item, inheritance: rest }
+  const inheritance = item.inheritance
+  if (!inheritance) return item
+  const { morph, pattern, ...rest } = inheritance
+  return { ...item, inheritance: { ...rest, ...(getMorph(morph) ? { morph } : {}), ...(isPattern(pattern) ? { pattern } : {}) } }
 }
 
 export function freshVitals(hunger = 0.5): FishVitals {
@@ -98,6 +100,7 @@ export function createInitialState(): GameState {
       relaxSeconds: 0,
       visits: 0,
       giftsOpened: 0,
+      released: 0,
     },
     settings: { sound: true, music: true },
     fishpedia: backfillFishpedia({}, ownedFish),
@@ -106,6 +109,8 @@ export function createInitialState(): GameState {
     trophies: {},
     visitors: {},
     gifts: [],
+    ocean: [],
+    seasonSeen: '',
   }
 }
 
@@ -178,6 +183,8 @@ export function sanitize(state: Partial<GameState>): GameState {
   )
   merged.visitors = sanitizeVisitors(state.visitors)
   merged.gifts = sanitizeGifts(state.gifts)
+  merged.ocean = sanitizeOcean(state.ocean)
+  merged.seasonSeen = typeof state.seasonSeen === 'string' ? state.seasonSeen.slice(0, 40) : ''
   for (const f of merged.ownedFish) {
     if (!merged.fishVitals[f.id]) merged.fishVitals = { ...merged.fishVitals, [f.id]: freshVitals(0.4) }
   }
@@ -260,4 +267,12 @@ function sanitizeGifts(raw: unknown): VisitorGift[] {
         g && typeof g.id === 'string' && getVisitor(g.visitorId) && [g.x, g.z, g.coins, g.xp, g.at].every(Number.isFinite) && g.coins >= 0 && g.xp >= 0,
     )
     .slice(-MAX_GIFTS)
+}
+
+function sanitizeOcean(raw: unknown): OceanFish[] {
+  if (!Array.isArray(raw)) return []
+  return (raw as OceanFish[])
+    .filter((f) => f && typeof f.id === 'string' && typeof f.name === 'string' && getFishDef(f.defId) && Number.isFinite(f.at))
+    .map((f) => ({ id: f.id, defId: f.defId, name: f.name.slice(0, 18), at: f.at, ...(getMorph(f.morph) ? { morph: f.morph } : {}), ...(isPattern(f.pattern) ? { pattern: f.pattern } : {}) }))
+    .slice(-MAX_OCEAN_FISH)
 }

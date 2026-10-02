@@ -38,6 +38,8 @@ import { beautyOf } from './beauty'
 import { STAND_CATALOG } from '../scene/stands/standDefinitions'
 import { discoveryRewards, recordFish } from './fishpedia'
 import { getToolDef } from '../scene/cleaning/toolDefinitions'
+import { canRelease, MAX_OCEAN_FISH, RELEASE_XP, tideFor, tideReward } from './ocean'
+import { seasonOn } from './seasons'
 import {
   AWAY_VISIT_SECONDS,
   eligibleVisitors,
@@ -77,6 +79,8 @@ interface GameActions {
   equipTool: (id: string) => void
   rehomeFish: (fishId: string) => number
   sellFish: (fishId: string) => number
+  /** Release a grown fish to the Open Ocean. Returns the coins it earned, or null if it isn't grown yet. */
+  releaseFish: (fishId: string) => number | null
   salePrice: (fishId: string) => number
   renameAquarium: (name: string) => void
   transferFish: (fishId: string, destination: 'main' | 'nursery') => boolean
@@ -420,6 +424,32 @@ export const useGameStore = create<GameStore>()(
 
         rehomeFish: (fishId) => get().sellFish(fishId),
 
+        releaseFish: (fishId) => {
+          const s = get()
+          const fish = s.ownedFish.find((f) => f.id === fishId)
+          const def = fish && getFishDef(fish.defId)
+          if (!fish || !def || !canRelease(s, fish)) return null
+          const firstOfKind = !s.ocean.some((f) => f.defId === fish.defId)
+          const tideBefore = tideFor(s.stats.released)
+          const morph = fish.inheritance?.morph
+          const pattern = fish.inheritance?.pattern
+          const ocean = [...s.ocean, { id: fish.id, defId: fish.defId, name: fish.name, at: Date.now(), ...(morph ? { morph } : {}), ...(pattern ? { pattern } : {}) }].slice(-MAX_OCEAN_FISH)
+          // Same coins as selling, so letting go never costs anything.
+          const coins = get().sellFish(fishId)
+          set((g) => ({ ocean, stats: { ...g.stats, released: g.stats.released + 1 } }))
+          get().grantXp(RELEASE_XP[def.rarity])
+          const ui = useUIStore.getState()
+          ui.pushToast(`${fish.name} swam off into the Open Ocean! +${coins} coins`, 'reward', '🌊')
+          if (firstOfKind) ui.pushToast(`New ocean stamp: ${def.name}!`, 'success', '🐚')
+          const tide = tideFor(get().stats.released)
+          for (let t = tideBefore + 1; t <= tide; t++) {
+            const reward = tideReward(t)
+            set((g) => ({ currency: g.currency + reward.coins, treats: { ...g.treats, [reward.treat]: (g.treats[reward.treat] ?? 0) + reward.treatCount } }))
+            ui.pushToast(`The tide rose to Tide ${t}! +${reward.coins} coins and ${reward.treatCount} ${getFoodDef(reward.treat).name}`, 'reward', '🌊')
+          }
+          return coins
+        },
+
         renameAquarium: (name) => {
           const trimmed = name.trim().slice(0, 28)
           if (trimmed) set({ aquariumName: trimmed })
@@ -586,6 +616,14 @@ export const useGameStore = create<GameStore>()(
               get().grantXp(done * reward.xp)
               useUIStore.getState().pushToast(`Wishes you finished last time paid out: +${done * reward.coins} coins`, 'reward', '🪙')
             }
+          }
+          // A new season says hello once a year.
+          const season = seasonOn()
+          const seasonKey = season ? `${season.id}-${new Date().getFullYear()}` : ''
+          if (season && get().seasonSeen !== seasonKey) {
+            set({ seasonSeen: seasonKey })
+            const piece = DECORATION_CATALOG.find((d) => d.season === season.id)
+            useUIStore.getState().pushToast(`${season.name} is here! ${season.blurb}${piece ? ` Find the ${piece.name} in the shop.` : ''}`, 'success', season.icon)
           }
           const won = newTrophies(get())
           if (won.length === 0) return

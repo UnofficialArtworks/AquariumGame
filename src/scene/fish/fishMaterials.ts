@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { FishDefinition, PatternType } from '../../state/types'
 import { patchAquaShader } from '../materials/aquaShader'
 import { hashString } from '../../utils/rng'
+import { FISH_CATALOG } from './fishDefinitions'
 
 const PATTERN_INDEX: Record<PatternType, number> = {
   solid: 0,
@@ -17,7 +18,9 @@ const PATTERN_INDEX: Record<PatternType, number> = {
 
 /** Per-species pattern tuning: (count, width, offset, outline). */
 function patternParams(def: FishDefinition): THREE.Vector4 {
-  switch (def.id) {
+  // Species tuning only fits the species' own pattern; a bred pattern uses the defaults.
+  const own = FISH_CATALOG.find((f) => f.id === def.id)?.pattern === def.pattern
+  switch (own ? def.id : '') {
     case 'clownfish':
       return new THREE.Vector4(3, 0.3, -0.25, 1)
     case 'angelfish':
