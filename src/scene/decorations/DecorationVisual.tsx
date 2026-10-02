@@ -18,8 +18,10 @@ import {
   buildVolcano,
 } from './builders/adventure'
 import { buildFeeder, buildFilter, buildFountain, buildGrowLamp, buildMarimo } from './builders/gadgets'
+import { buildAtlantis, buildCityGate, buildGeode, buildGlowCave } from './builders/legends'
 import { DECORATION_FX } from './DecorationFx'
 import { GADGET_FX } from './GadgetFx'
+import { LEGENDS_FX } from './LegendsFx'
 
 const BUILDERS: Record<DecorationKind, StaticBuilder | null> = {
   rocks: buildRocks,
@@ -56,6 +58,10 @@ const BUILDERS: Record<DecorationKind, StaticBuilder | null> = {
   filter: buildFilter,
   growlamp: buildGrowLamp,
   fountain: buildFountain,
+  citygate: buildCityGate,
+  glowcave: buildGlowCave,
+  atlantis: buildAtlantis,
+  geode: buildGeode,
 }
 
 const cache = new Map<string, BuiltPart[]>()
@@ -73,7 +79,7 @@ export function staticPartsFor(def: DecorationCatalogEntry): BuiltPart[] {
 
 export function DecorationVisual({ def, instanceId }: { def: DecorationCatalogEntry; instanceId?: string }) {
   const parts = staticPartsFor(def)
-  const Fx = DECORATION_FX[def.kind] ?? GADGET_FX[def.kind]
+  const Fx = DECORATION_FX[def.kind] ?? GADGET_FX[def.kind] ?? LEGENDS_FX[def.kind]
   return (
     <group>
       {parts.map((p, i) => (

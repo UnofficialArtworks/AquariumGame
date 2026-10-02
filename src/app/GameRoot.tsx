@@ -9,10 +9,12 @@ import { HUD } from '../ui/HUD'
 import { growAlgae, saveAlgae } from '../sim/algae'
 import { bonusesFor } from '../state/bonuses'
 import { setSoundEnabled, unlockAudio } from '../audio/sfx'
+import { PhotoCapture, useAdaptiveDpr } from '../scene/RenderBudget'
 
 export function GameRoot() {
   const sound = useGameStore((s) => s.settings.sound)
   const scrubbing = useUIStore((s) => s.mode === 'clean' && s.cleanTool === 'sponge' && s.toolActive)
+  const { dpr, monitor } = useAdaptiveDpr()
 
   useEffect(() => {
     let ticks = 0
@@ -47,10 +49,12 @@ export function GameRoot() {
       <Canvas
         className="tank-canvas"
         shadows={{ type: PCFShadowMap }}
-        dpr={[1, 1.75]}
-        gl={{ antialias: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' }}
+        dpr={dpr}
+        gl={{ antialias: false, powerPreference: 'high-performance' }}
       >
+        {monitor}
         <TankScene />
+        <PhotoCapture />
       </Canvas>
       <ItemPreviewGenerator />
       <HUD />

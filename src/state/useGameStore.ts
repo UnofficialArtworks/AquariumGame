@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { DecorationInstance, FishVitals, GameSettings, GameState, NurseryEgg, WasteItem } from './types'
+import type { DecorationInstance, FishInstance, FishVitals, GameSettings, GameState, NurseryEgg, WasteItem } from './types'
 import { CURRENT_SAVE_VERSION, createInitialState, freshVitals, migrate, sanitize } from './migrations'
 import {
   COIN_INTERVAL_MAX,
@@ -34,7 +34,9 @@ import { clampToInterior } from '../scene/TankBounds'
 import { algaeCoverage } from '../sim/algae'
 import { createNurseryEgg, getEggCountRange, sampleEggCount } from './nursery'
 import { bonusesFor } from './bonuses'
-import { getStandDef } from '../scene/stands/standDefinitions'
+import { getStandDef, STAND_CATALOG } from '../scene/stands/standDefinitions'
+import { BRED_COINS, DISCOVERY_XP, milestoneCoins, milestonesCrossed, MORPH_COINS, MORPH_XP, recordFish, speciesCount } from './fishpedia'
+import { getMorph, speciesLabel } from './morphs'
 import { getToolDef } from '../scene/cleaning/toolDefinitions'
 
 /** Hunger the auto-feeder keeps fish under while the player is away. */
@@ -77,6 +79,8 @@ interface GameActions {
   rewardAlgaeScrub: (amount: number) => void
   waterChange: () => boolean
   setSetting: <K extends keyof GameSettings>(key: K, value: GameSettings[K]) => void
+  /** Add newly arrived fish to the Fishpedia and pay out any discovery rewards. */
+  noteFish: (fish: FishInstance[], hatched: boolean) => void
 }
 
 export type GameStore = GameState & GameActions
@@ -100,7 +104,7 @@ function cleanlinessOf(s: GameState): number {
 
 type NurseryProgress = Pick<GameState, 'nurserySession' | 'nurseryEggs' | 'ownedFish' | 'fishVitals'> & {
   eggCreated: boolean
-  hatched: number
+  hatched: FishInstance[]
 }
 
 function progressNursery(s: GameState, seconds: number): NurseryProgress {
@@ -136,16 +140,19 @@ function progressNursery(s: GameState, seconds: number): NurseryProgress {
       ownedFish: s.ownedFish,
       fishVitals: s.fishVitals,
       eggCreated,
-      hatched: 0,
+      hatched: [],
     }
   }
   const ownedFish = [...s.ownedFish]
   const fishVitals = { ...s.fishVitals }
+  const hatched: FishInstance[] = []
   for (const egg of hatchedEggs) {
     const id = crypto.randomUUID()
     const name = pickFishName(ownedFish.map((f) => f.name))
-    ownedFish.push({ id, defId: egg.defId, name, bornAt: Date.now() + egg.remainingSeconds * 1000,
-      habitat: 'nursery', sizeScale: sampleFishSize(egg.defId), inheritance: egg.inheritance })
+    const fish: FishInstance = { id, defId: egg.defId, name, bornAt: Date.now() + egg.remainingSeconds * 1000,
+      habitat: 'nursery', sizeScale: sampleFishSize(egg.defId), inheritance: egg.inheritance }
+    ownedFish.push(fish)
+    hatched.push(fish)
     fishVitals[id] = freshVitals(0.35)
   }
   return {
@@ -154,7 +161,7 @@ function progressNursery(s: GameState, seconds: number): NurseryProgress {
     ownedFish,
     fishVitals,
     eggCreated,
-    hatched: hatchedEggs.length,
+    hatched,
   }
 }
 
@@ -165,7 +172,12 @@ function unlocksAtLevel(level: number): string[] {
     ...BACKGROUND_CATALOG.filter((d) => d.unlockLevel === level).map((d) => `${d.name} background`),
     ...SUBSTRATE_CATALOG.filter((d) => d.unlockLevel === level).map((d) => d.name),
     ...FOOD_CATALOG.filter((d) => d.unlockLevel === level && !d.unlimited).map((d) => d.name),
+    ...STAND_CATALOG.filter((d) => d.unlockLevel === level).map((d) => d.name),
   ]
+}
+
+function hatchToast(count: number) {
+  useUIStore.getState().pushToast(`${count === 1 ? 'A tiny friend hatched' : `${count} tiny friends hatched`}! Move them to your aquarium when you like.`, 'success', '🐣')
 }
 
 const PREMIUM_TREAT_ROTATION = ['rainbow-flakes', 'zoom-shrimp', 'glow-bites', 'golden-pellet', 'growth-formula']
@@ -199,8 +211,10 @@ export const useGameStore = create<GameStore>()(
         )
         const { eggCreated, hatched, ...nursery } = progressNursery({ ...s, fishVitals: vitals }, 1)
         set({ currency: s.currency + whole, lastTickTimestamp: Date.now(), murk, ...nursery })
-        if (hatched) useUIStore.getState().pushToast(`${hatched === 1 ? 'A tiny friend hatched' : `${hatched} tiny friends hatched`}! Move them to your aquarium when you like.`, 'success', '🐣')
-        else if (eggCreated) useUIStore.getState().pushToast('New eggs are cozy in the nursery!', 'success', '🥚')
+        if (hatched.length) {
+          hatchToast(hatched.length)
+          get().noteFish(hatched, true)
+        } else if (eggCreated) useUIStore.getState().pushToast('New eggs are cozy in the nursery!', 'success', '🥚')
       },
 
       applyOfflineProgress: () => {
@@ -208,8 +222,9 @@ export const useGameStore = create<GameStore>()(
         const now = Date.now()
         const elapsed = Math.min(MAX_OFFLINE_SIM_SECONDS, Math.max(0, (now - s.lastTickTimestamp) / 1000))
         if (elapsed < 5) {
-          const { nurserySession, nurseryEggs, ownedFish, fishVitals } = progressNursery(s, elapsed)
+          const { nurserySession, nurseryEggs, ownedFish, fishVitals, hatched } = progressNursery(s, elapsed)
           set({ lastTickTimestamp: now, nurserySession, nurseryEggs, ownedFish, fishVitals })
+          if (hatched.length) get().noteFish(hatched, true)
           return
         }
         const earnSeconds = Math.min(elapsed, MAX_OFFLINE_EARNING_SECONDS)
@@ -239,8 +254,10 @@ export const useGameStore = create<GameStore>()(
         const earned = Math.floor(coins)
         const { eggCreated, hatched, ...nursery } = progressNursery({ ...s, fishVitals: vitals }, elapsed)
         set({ currency: s.currency + earned, lastTickTimestamp: now, murk, ...nursery })
-        if (hatched) useUIStore.getState().pushToast(`${hatched === 1 ? 'A tiny friend hatched' : `${hatched} tiny friends hatched`}! Move them to your aquarium when you like.`, 'success', '🐣')
-        else if (eggCreated) useUIStore.getState().pushToast('New eggs are cozy in the nursery!', 'success', '🥚')
+        if (hatched.length) {
+          hatchToast(hatched.length)
+          get().noteFish(hatched, true)
+        } else if (eggCreated) useUIStore.getState().pushToast('New eggs are cozy in the nursery!', 'success', '🥚')
         if (elapsed > 180) {
           useUIStore.getState().setWelcomeBack({
             minutesAway: Math.round(elapsed / 60),
@@ -340,13 +357,15 @@ export const useGameStore = create<GameStore>()(
         if (!def || levelFromXp(s.xp).level < def.unlockLevel || s.ownedFish.filter((f) => f.habitat !== 'nursery').length >= MAX_OWNED_FISH || s.currency < def.cost) return null
         const id = crypto.randomUUID()
         const name = pickFishName(s.ownedFish.map((f) => f.name))
+        const fish: FishInstance = { id, defId, name, bornAt: Date.now(), habitat: 'main', sizeScale: sampleFishSize(defId) }
         set({
           currency: s.currency - def.cost,
-          ownedFish: [...s.ownedFish, { id, defId, name, bornAt: Date.now(), habitat: 'main', sizeScale: sampleFishSize(defId) }],
+          ownedFish: [...s.ownedFish, fish],
           fishVitals: { ...s.fishVitals, [id]: freshVitals(0.35) },
           stats: { ...s.stats, fishBought: s.stats.fishBought + 1 },
         })
         get().grantXp(Math.max(3, Math.round(def.cost / 20)))
+        get().noteFish([fish], false)
         return id
       },
 
@@ -572,6 +591,38 @@ export const useGameStore = create<GameStore>()(
       },
 
       setSetting: (key, value) => set((s) => ({ settings: { ...s.settings, [key]: value } })),
+
+      noteFish: (fish, hatched) => {
+        const s = get()
+        const found = recordFish(s.fishpedia, fish, hatched)
+        if (found.book === s.fishpedia) return
+        const toast = useUIStore.getState().pushToast
+        let coins = 0
+        let xp = 0
+        for (const id of found.species) {
+          const def = getFishDef(id)!
+          xp += DISCOVERY_XP[def.rarity]
+          if (found.species.length <= 2) toast(`New Fishpedia entry: ${def.name}! +${DISCOVERY_XP[def.rarity]} XP`, 'success', '📖')
+        }
+        if (found.species.length > 2) toast(`${found.species.length} new Fishpedia entries! +${xp} XP`, 'success', '📖')
+        for (const id of found.bred) {
+          const def = getFishDef(id)!
+          coins += BRED_COINS[def.rarity]
+          toast(`${def.name} earned its nursery stamp in the Fishpedia! +${BRED_COINS[def.rarity]} coins`, 'success', '🐣')
+        }
+        for (const { defId, morph } of found.morphs) {
+          coins += MORPH_COINS
+          xp += MORPH_XP
+          toast(`So rare! A ${speciesLabel(getFishDef(defId)!, morph)} hatched! +${MORPH_COINS} coins`, 'success', getMorph(morph)?.icon ?? '✨')
+        }
+        for (const count of milestonesCrossed(speciesCount(s.fishpedia), speciesCount(found.book))) {
+          coins += milestoneCoins(count)
+          toast(`Fishpedia milestone: ${count} species collected! +${milestoneCoins(count)} coins`, 'success', '🏆')
+        }
+        set({ fishpedia: found.book, currency: get().currency + coins })
+        useUIStore.getState().bumpFishpediaNews(found.species.length + found.morphs.length + found.bred.length)
+        if (xp) get().grantXp(xp)
+      },
     }),
     {
       name: 'aquarium-save',
@@ -603,6 +654,7 @@ export const useGameStore = create<GameStore>()(
         waste: s.waste,
         stats: s.stats,
         settings: s.settings,
+        fishpedia: s.fishpedia,
       }),
       onRehydrateStorage: () => (state, error) => {
         if (error) {

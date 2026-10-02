@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import type { FishDefinition } from '../../state/types'
 import type { FishAgent } from '../../sim/world'
 import { simClock } from '../../sim/world'
@@ -16,16 +17,19 @@ import {
   tailGeometry,
 } from './fishGeometry'
 import { taperedTube } from '../geometry/shapes'
+import { eyePupil, eyeRigs, eyeShine, eyeWhite, type EyeRig } from './FishEyes'
 
-const eyeWhite = makeAqua(new THREE.MeshStandardMaterial({ color: '#f7f7f2', roughness: 0.25 }), {}, 'aqua-eye-white')
-const eyePupil = makeAqua(new THREE.MeshStandardMaterial({ color: '#0b0b10', roughness: 0.08, metalness: 0.2 }), {}, 'aqua-eye-pupil')
-const eyeShine = new THREE.MeshBasicMaterial({ color: '#ffffff' })
 const whiskerMaterial = makeAqua(new THREE.MeshStandardMaterial({ color: '#d9c7a0', roughness: 0.6 }), {}, 'aqua-whisker')
 const spikeMaterial = makeAqua(new THREE.MeshStandardMaterial({ color: '#f4ecd0', roughness: 0.5 }), {}, 'aqua-spike')
 const beakMaterial = makeAqua(new THREE.MeshStandardMaterial({ color: '#f5f0e6', roughness: 0.3 }), {}, 'aqua-beak')
 const gillMaterial = makeAqua(new THREE.MeshStandardMaterial({ color: '#4a525c', roughness: 0.7 }), {}, 'aqua-gill')
 
 const sphere = new THREE.SphereGeometry(1, 16, 12)
+const tmpGaze = new THREE.Vector3()
+const tmpDir = new THREE.Vector3()
+const tmpQuat = new THREE.Quaternion()
+const tmpMatrix = new THREE.Matrix4()
+const tmpScale = new THREE.Vector3()
 const cone = new THREE.ConeGeometry(1, 1, 6)
 const NO_FEATURES: NonNullable<FishDefinition['features']> = []
 
@@ -38,17 +42,31 @@ interface FishBodyProps {
   hungerRef?: RefObject<number>
 }
 
+/** Bake a list of (geometry, transform) pairs into one mesh: one draw call instead of many. */
+function bake(parts: Array<[THREE.BufferGeometry, THREE.Matrix4]>): THREE.BufferGeometry {
+  return mergeGeometries(parts.map(([g, m]) => g.clone().applyMatrix4(m)))!
+}
+
 /**
  * A fish built from code: smooth lathe body with a shader-painted pattern,
  * species-specific tail/dorsal/pectoral fins, cute eyes, and optional
  * features (whiskers, spines, spikes, beak, gills). The body bends in a
  * travelling wave and the tail whips to match, driven by the fish's brain.
+ *
+ * Draw-call budget matters with 30 fish: live fish hand their eyes to the
+ * shared instanced FishEyesRenderer, and multi-part features are baked into
+ * single meshes.
  */
 export function FishBody({ def, agentRef, seedKey = def.id, hungerRef }: FishBodyProps) {
+  const rootRef = useRef<THREE.Group>(null)
   const tailRef = useRef<THREE.Group>(null)
   const pectoralRefs = useRef<Array<THREE.Group | null>>([])
-  const spikesRef = useRef<THREE.Group>(null)
+  const finPhase = useRef(Math.random() * 6)
+  const spikesRef = useRef<THREE.InstancedMesh>(null)
+  const spikeGroupRef = useRef<THREE.Group>(null)
+  const lastSpikeScale = useRef(-1)
   const materials = useMemo(() => createFishMaterials(def, seedKey), [def, seedKey])
+  const live = agentRef !== undefined
 
   useEffect(
     () => () => {
@@ -89,14 +107,56 @@ export function FishBody({ def, agentRef, seedKey = def.id, hungerRef }: FishBod
     return { x: -hl + t * def.bodyLength, y: r * 0.3, z: r * width * 0.88, size }
   }, [def, hl, hh, width, profile, features])
 
+  // Resting pupil direction (out to the side, a little forward) and the
+  // highlight's offset from the pupil, per eye.
+  const eyeAim = useMemo(() => [1, -1].map((side) => new THREE.Vector3(0.18, 0, side * 0.5).normalize()), [])
+  const shineOffset = useMemo(() => [1, -1].map((side) => new THREE.Vector3(0.2, 0.3, side * 0.3).multiplyScalar(eye.size)), [eye.size])
+
+  // Live fish: register with the shared instanced eye renderer.
+  const rig = useRef<EyeRig | null>(null)
+  useEffect(() => {
+    const root = rootRef.current
+    if (!live || !root) return
+    const r: EyeRig = {
+      root,
+      eyes: [1, -1].map((side, i) => ({
+        center: new THREE.Vector3(eye.x, eye.y, side * eye.z),
+        size: eye.size,
+        pupil: eyeAim[i].clone().multiplyScalar(eye.size * 0.53),
+        shine: eyeAim[i].clone().multiplyScalar(eye.size * 0.53).add(shineOffset[i]),
+      })),
+    }
+    rig.current = r
+    eyeRigs.add(r)
+    return () => {
+      eyeRigs.delete(r)
+      rig.current = null
+    }
+  }, [live, eye, eyeAim, shineOffset])
+
   const whiskers = useMemo(() => {
     if (!features.includes('whiskers')) return null
     const s = def.bodyLength
-    return [1, -1].flatMap((side) => [
+    const tubes = [1, -1].flatMap((side) => [
       taperedTube([[0, 0, 0], [s * 0.1, -s * 0.04, side * s * 0.06], [s * 0.18, -s * 0.12, side * s * 0.1]], s * 0.012, s * 0.003, 8, 4),
       taperedTube([[0, 0, 0], [s * 0.06, -s * 0.07, side * s * 0.04], [s * 0.1, -s * 0.16, side * s * 0.05]], s * 0.01, s * 0.003, 8, 4),
     ])
+    return mergeGeometries(tubes)!
   }, [def, features])
+
+  const spines = useMemo(() => {
+    if (!features.includes('spines')) return null
+    return bake(
+      Array.from({ length: 9 }, (_, i) => [
+        cone,
+        new THREE.Matrix4().compose(
+          new THREE.Vector3(hl * (0.45 - i * 0.12), hh * 0.95 + hh * 0.8, 0),
+          new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0.35 + i * 0.03)),
+          new THREE.Vector3(hh * 0.05, hh * (1.8 - Math.abs(i - 3) * 0.16), hh * 0.05),
+        ),
+      ]),
+    )
+  }, [features, hl, hh])
 
   const spikes = useMemo(() => {
     if (!features.includes('spikes')) return []
@@ -121,7 +181,10 @@ export function FishBody({ def, agentRef, seedKey = def.id, hungerRef }: FishBod
     u.uSwimPhase.value = phase
     u.uSwimAmp.value = def.bodyLength * (0.035 + Math.min(1.5, effort) * 0.045) * (agent?.sleeping ? 0.5 : 1)
     u.uPuff.value = agent ? THREE.MathUtils.damp(u.uPuff.value, agent.puff > 0.05 ? 1 : 0, 6, delta) : 0
-    u.uGulp.value = agent ? Math.sin(Math.max(0, agent.eatPulse / 0.3) * Math.PI) : 0
+    // A gulp after eating, otherwise a slow breathing pulse at the gills.
+    const breath = (0.5 + 0.5 * Math.sin(t * 2.4 + eye.size * 400)) * 0.1
+    u.uGulp.value = agent ? Math.max(Math.sin(Math.max(0, agent.eatPulse / 0.3) * Math.PI), breath) : 0
+    u.uBend.value = agent ? agent.bend : 0
     if (agent) {
       const fx = agent.effects
       u.uRainbow.value = THREE.MathUtils.damp(u.uRainbow.value, fx.rainbow > t ? 1 : 0, 3, delta)
@@ -134,18 +197,53 @@ export function FishBody({ def, agentRef, seedKey = def.id, hungerRef }: FishBod
     if (tailRef.current) {
       const amp = u.uSwimAmp.value
       const p = phase - 3.2
-      tailRef.current.position.z = Math.sin(p) * amp
-      tailRef.current.rotation.y = ((-3.2 * Math.cos(p) + 2 * Math.sin(p)) * amp) / def.bodyLength * 1.6
+      const bend = u.uBend.value
+      tailRef.current.position.z = Math.sin(p) * amp + bend * hl * 0.9
+      tailRef.current.rotation.y = ((-3.2 * Math.cos(p) + 2 * Math.sin(p)) * amp) / def.bodyLength * 1.6 + bend * 0.9
     }
+    // Pectorals: lazy strokes while cruising, a quick fan while hovering.
+    const hover = agent ? agent.hover : 0.4
+    finPhase.current += delta * (4 + hover * 9)
     pectoralRefs.current.forEach((g, i) => {
       if (!g) return
       const side = i === 0 ? 1 : -1
-      g.rotation.x = side * (0.5 + Math.sin(phase * 0.7 + i) * 0.35)
+      g.rotation.x = side * (0.5 + Math.sin(finPhase.current + i * 1.6) * (0.2 + hover * 0.35))
     })
-    if (spikesRef.current) {
+    // Eyes follow food, the lantern or the player.
+    const root = rootRef.current
+    const r = rig.current
+    if (agent && root && r) {
+      const gazing = agent.gazing
+      for (let i = 0; i < 2; i++) {
+        const side = i === 0 ? 1 : -1
+        const base = eyeAim[i]
+        tmpDir.copy(base)
+        if (gazing > 0.02) {
+          root.worldToLocal(tmpGaze.copy(agent.gaze))
+          tmpGaze.sub(r.eyes[i].center)
+          if (tmpGaze.lengthSq() > 1e-6) {
+            tmpGaze.normalize()
+            // Each eye can only roll so far toward the other side of the head.
+            tmpGaze.z = side * Math.max(side * tmpGaze.z, 0.25)
+            tmpDir.lerp(tmpGaze.normalize(), gazing * 0.7).normalize()
+          }
+        }
+        tmpQuat.setFromUnitVectors(base, tmpDir)
+        r.eyes[i].pupil.copy(tmpDir).multiplyScalar(eye.size * 0.53)
+        r.eyes[i].shine.copy(shineOffset[i]).applyQuaternion(tmpQuat).add(r.eyes[i].pupil)
+      }
+    }
+    // Pufferfish spikes stand up when it puffs.
+    const spikeMesh = spikesRef.current
+    if (spikeMesh) {
       const s = 0.4 + u.uPuff.value * 1.1
-      spikesRef.current.scale.setScalar(1 + u.uPuff.value * 0.55)
-      spikesRef.current.children.forEach((c) => c.scale.set(hh * 0.07, hh * 0.28 * s, hh * 0.07))
+      spikeGroupRef.current?.scale.setScalar(1 + u.uPuff.value * 0.55)
+      if (Math.abs(s - lastSpikeScale.current) > 0.002) {
+        lastSpikeScale.current = s
+        tmpScale.set(hh * 0.07, hh * 0.28 * s, hh * 0.07)
+        spikes.forEach((spike, i) => spikeMesh.setMatrixAt(i, tmpMatrix.compose(spike.position, spike.quaternion, tmpScale)))
+        spikeMesh.instanceMatrix.needsUpdate = true
+      }
     }
   })
 
@@ -155,17 +253,18 @@ export function FishBody({ def, agentRef, seedKey = def.id, hungerRef }: FishBod
   return (
     // Built nose-toward-local+X; steering orients the parent group so local -Z
     // is the direction of travel (THREE.Matrix4.lookAt), so turn +X to -Z here.
-    <group rotation={[0, Math.PI / 2, 0]}>
+    <group ref={rootRef} rotation={[0, Math.PI / 2, 0]}>
       <mesh geometry={bodyGeometry(def)} material={materials.body} castShadow />
 
-      {/* Eyes: white, pupil, and a tiny highlight for a lively look */}
-      {[1, -1].map((side) => (
-        <group key={side} position={[eye.x, eye.y, side * eye.z]}>
-          <mesh geometry={sphere} material={eyeWhite} scale={eye.size} />
-          <mesh geometry={sphere} material={eyePupil} scale={eye.size * 0.62} position={[eye.size * 0.18, 0, side * eye.size * 0.5]} />
-          <mesh geometry={sphere} material={eyeShine} scale={eye.size * 0.2} position={[eye.size * 0.38, eye.size * 0.3, side * eye.size * 0.8]} />
-        </group>
-      ))}
+      {/* Static previews draw their own eyes; live fish use the instanced eye renderer. */}
+      {!live &&
+        [1, -1].map((side) => (
+          <group key={side} position={[eye.x, eye.y, side * eye.z]}>
+            <mesh geometry={sphere} material={eyeWhite} scale={eye.size} />
+            <mesh geometry={sphere} material={eyePupil} scale={eye.size * 0.62} position={[eye.size * 0.18, 0, side * eye.size * 0.5]} />
+            <mesh geometry={sphere} material={eyeShine} scale={eye.size * 0.2} position={[eye.size * 0.38, eye.size * 0.3, side * eye.size * 0.8]} />
+          </group>
+        ))}
 
       <group ref={tailRef} position={[-hl + def.bodyLength * 0.01, 0, 0]}>
         <mesh geometry={geometries.tail} material={finMaterial} />
@@ -199,27 +298,13 @@ export function FishBody({ def, agentRef, seedKey = def.id, hungerRef }: FishBod
         </group>
       ))}
 
-      {whiskers?.map((g, i) => (
-        <mesh key={i} geometry={g} material={whiskerMaterial} position={[hl * 0.97, -hh * 0.2, 0]} />
-      ))}
+      {whiskers && <mesh geometry={whiskers} material={whiskerMaterial} position={[hl * 0.97, -hh * 0.2, 0]} />}
 
-      {features.includes('spines') &&
-        Array.from({ length: 9 }, (_, i) => (
-          <mesh
-            key={i}
-            geometry={cone}
-            material={finMaterial}
-            position={[hl * (0.45 - i * 0.12), hh * 0.95 + hh * 0.8, 0]}
-            rotation={[0, 0, 0.35 + i * 0.03]}
-            scale={[hh * 0.05, hh * (1.8 - Math.abs(i - 3) * 0.16), hh * 0.05]}
-          />
-        ))}
+      {spines && <mesh geometry={spines} material={finMaterial} />}
 
       {spikes.length > 0 && (
-        <group ref={spikesRef}>
-          {spikes.map((s, i) => (
-            <mesh key={i} geometry={cone} material={spikeMaterial} position={s.position} quaternion={s.quaternion} />
-          ))}
+        <group ref={spikeGroupRef}>
+          <instancedMesh ref={spikesRef} args={[cone, spikeMaterial, spikes.length]} frustumCulled={false} />
         </group>
       )}
 

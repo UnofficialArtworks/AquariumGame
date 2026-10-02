@@ -62,6 +62,7 @@ const BODY_VERTEX_PARS = /* glsl */ `
   uniform float uSwimAmp;
   uniform float uPuff;
   uniform float uGulp;
+  uniform float uBend;
   varying vec3 vFishPos;
 `
 
@@ -69,6 +70,8 @@ const BODY_VERTEX_HOOK = /* glsl */ `
   vFishPos = position;
   float su = clamp((uHalfLen - position.x) / (2.0 * uHalfLen), 0.0, 1.0);
   transformed.z += sin(uSwimPhase - su * 3.2) * uSwimAmp * su * su;
+  // Curl into turns: the tail sweeps toward the inside of the curve.
+  transformed.z += uBend * su * su * uHalfLen * 0.9;
   float bulge = 1.0 + uPuff * 0.8 * max(0.0, 1.0 - pow(abs(su - 0.45) * 2.0, 2.0));
   transformed.y *= bulge;
   transformed.z *= mix(1.0, bulge * 1.3, uPuff);
@@ -202,6 +205,7 @@ export interface FishMaterialSet {
     uSwimAmp: THREE.IUniform<number>
     uPuff: THREE.IUniform<number>
     uGulp: THREE.IUniform<number>
+    uBend: THREE.IUniform<number>
     uRainbow: THREE.IUniform<number>
     uGolden: THREE.IUniform<number>
     uGlowFx: THREE.IUniform<number>
@@ -234,6 +238,7 @@ export function createFishMaterials(def: FishDefinition, seedKey: string): FishM
     uSwimAmp: { value: def.bodyLength * 0.06 },
     uPuff: { value: 0 },
     uGulp: { value: 0 },
+    uBend: { value: 0 },
     uRainbow: { value: 0 },
     uGolden: { value: 0 },
     uGlowFx: { value: 0 },

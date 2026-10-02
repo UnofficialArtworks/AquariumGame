@@ -30,6 +30,11 @@ export type DecorationKind =
   | 'volcano'
   | 'ufo'
   | 'airstone'
+  // Late-game centrepieces (builders/legends.ts).
+  | 'citygate'
+  | 'glowcave'
+  | 'atlantis'
+  | 'geode'
   // Gadgets: decorations with a passive bonus.
   | 'feeder'
   | 'marimo'
@@ -197,6 +202,28 @@ export const DECORATION_CATALOG: DecorationCatalogEntry[] = [
     id: 'crashed-ufo', name: 'Crashed UFO', kind: 'ufo', rarity: 'legendary', cost: 1800, unlockLevel: 16,
     description: 'Something landed in your tank… and its lights are still blinking.',
     styleTags: ['scifi', 'adventure'], footprintRadius: 0.8, height: 0.85, color: '#b8c4d0', accentColor: '#6bff9a',
+  },
+  // --- late-game centrepieces ---
+  {
+    id: 'sunken-gate', name: 'Sunken City Gate', kind: 'citygate', rarity: 'epic', cost: 2000, unlockLevel: 21,
+    description: 'A carved stone gateway from a lost city, its runes still faintly glowing.',
+    styleTags: ['adventure', 'classic'], footprintRadius: 0.75, height: 1.15, color: '#d8cdb4', accentColor: '#3fd3c8',
+  },
+  {
+    id: 'glow-cave', name: 'Glow Cave', kind: 'glowcave', rarity: 'epic', cost: 2400, unlockLevel: 23,
+    description: 'A rocky grotto lined with crystals that light up after dark.',
+    styleTags: ['nature', 'sparkle'], footprintRadius: 0.85, height: 0.9, color: '#4a4458', accentColor: '#7cf0ff',
+  },
+  {
+    id: 'atlantis-palace', name: 'Atlantis Palace', kind: 'atlantis', rarity: 'legendary', cost: 4000, unlockLevel: 25,
+    description: 'Golden domes and marble columns around a glowing orb. Fish feel rich just looking at it.',
+    styleTags: ['classic', 'sparkle'], footprintRadius: 1, height: 1.5, color: '#e9e2cf', accentColor: '#ffd36a',
+    bonus: { kind: 'coins', amount: 0.45, label: '+45% coin bubbles' },
+  },
+  {
+    id: 'giant-geode', name: 'Giant Geode', kind: 'geode', rarity: 'legendary', cost: 3500, unlockLevel: 28,
+    description: 'A huge cracked-open stone, its hollow heart packed with violet crystals.',
+    styleTags: ['sparkle', 'nature'], footprintRadius: 0.65, height: 0.75, color: '#6d5a7a', accentColor: '#c58cff',
   },
   // --- gadgets (passive bonuses while placed) ---
   {

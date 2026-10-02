@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { FishDefinition, FishInstance } from '../../state/types'
+import type { FishAgent } from '../../sim/world'
 import { useFishBrain } from '../fish/useFishBrain'
 import { CreatureOverlay } from '../fish/FishEntity'
 import { MeshBuilder } from '../geometry/MeshBuilder'
@@ -63,8 +64,8 @@ function buildSeahorse(def: FishDefinition) {
   return b.build({ groundAO: false })
 }
 
-/** Static seahorse model with a small idle bob and buzzing back fin. */
-export function SeahorseVisual({ def, seed = 0 }: { def: FishDefinition; seed?: number }) {
+/** Upright seahorse: bobs while it hovers, leans into travel, back fin buzzing harder when it hurries. */
+export function SeahorseVisual({ def, seed = 0, agentRef }: { def: FishDefinition; seed?: number; agentRef?: RefObject<FishAgent | null> }) {
   const bodyRef = useRef<THREE.Group>(null)
   const finRef = useRef<THREE.Mesh>(null)
   const parts = useMemo(() => buildSeahorse(def), [def])
@@ -76,14 +77,23 @@ export function SeahorseVisual({ def, seed = 0 }: { def: FishDefinition; seed?: 
     shape.lineTo(0, -s * 0.1)
     return new THREE.ShapeGeometry(shape, 6)
   }, [def])
+  const motion = useRef({ finPhase: 0, lean: 0 })
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
     const t = clock.elapsedTime + seed
+    const agent = agentRef?.current
+    const m = motion.current
+    const speed = agent ? agent.velocity.length() : 0
+    const effort = agent ? Math.min(1.4, agent.effort) : 0.4
+    // Lean the head into the direction of travel; straighten up when hovering.
+    m.lean = THREE.MathUtils.damp(m.lean, -Math.min(0.4, speed * 2.2), 3, delta)
+    m.finPhase += delta * (26 + effort * 18)
     if (bodyRef.current) {
-      bodyRef.current.position.y = Math.sin(t * 1.4) * 0.05
-      bodyRef.current.rotation.z = Math.sin(t * 0.9) * 0.08
+      bodyRef.current.position.y = Math.sin(t * 1.4) * 0.05 * (1 - Math.min(1, speed * 4) * 0.6)
+      bodyRef.current.rotation.z = m.lean + Math.sin(t * 0.9) * 0.06
+      bodyRef.current.rotation.x = Math.sin(t * 0.7) * 0.05
     }
-    if (finRef.current) finRef.current.rotation.y = Math.sin(t * 38) * 0.5
+    if (finRef.current) finRef.current.rotation.y = Math.sin(m.finPhase) * (0.3 + effort * 0.35)
   })
 
   return (
@@ -108,7 +118,7 @@ export function SeahorseEntity({ instance, def }: { instance: FishInstance; def:
   ])
   return (
     <group ref={groupRef} position={start}>
-      <SeahorseVisual def={def} seed={instance.id.length} />
+      <SeahorseVisual def={def} seed={instance.id.length} agentRef={agentRef} />
       <CreatureOverlay fishId={instance.id} def={def} agentRef={agentRef} radius={def.bodyLength * 0.5} iconHeight={def.bodyLength * 0.6} />
     </group>
   )

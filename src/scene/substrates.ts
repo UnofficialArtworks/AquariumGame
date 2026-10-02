@@ -81,6 +81,29 @@ export const SUBSTRATE_CATALOG: SubstrateDefinition[] = [
     pebbleScale: 1.05,
     glow: true,
   },
+  {
+    id: 'pearl-sand',
+    name: 'Pink Pearl Sand',
+    description: 'Blush-pink sand scattered with real-looking pearls.',
+    cost: 1800,
+    unlockLevel: 27,
+    base: '#f3d9dc',
+    baseAlt: '#e6c2c8',
+    pebbleColors: ['#fff8f2', '#f7e6ea', '#ffd9e4', '#e9d8f2', '#fdf3d8'],
+    pebbleScale: 0.9,
+  },
+  {
+    id: 'treasure-sand',
+    name: 'Treasure Sand',
+    description: 'Golden sand glittering with sunken coins and gems. Lights up at night.',
+    cost: 2500,
+    unlockLevel: 29,
+    base: '#d9b25a',
+    baseAlt: '#c39a40',
+    pebbleColors: ['#ffd54a', '#ffe58a', '#f2b632', '#4fd6ff', '#ff5d8f', '#6dff9a'],
+    pebbleScale: 0.95,
+    glow: true,
+  },
 ]
 
 export const DEFAULT_SUBSTRATE_ID = 'natural-sand'

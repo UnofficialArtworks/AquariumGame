@@ -32,6 +32,15 @@ const SPECIES_TRAITS: Record<string, { sizeRange: [number, number]; eggCountRang
   'moon-jelly': { sizeRange: [0.86, 1.16], eggCountRange: [1, 3] },
   seahorse: { sizeRange: [0.85, 1.14], eggCountRange: [1, 3] },
   axolotl: { sizeRange: [0.87, 1.16], eggCountRange: [1, 3] },
+  'regal-tang': { sizeRange: [0.88, 1.14], eggCountRange: [1, 3] },
+  'moorish-idol': { sizeRange: [0.88, 1.14], eggCountRange: [1, 3] },
+  octopus: { sizeRange: [0.86, 1.16], eggCountRange: [1, 2] },
+  flowerhorn: { sizeRange: [0.9, 1.16], eggCountRange: [1, 3] },
+  'manta-ray': { sizeRange: [0.9, 1.12], eggCountRange: [1, 1] },
+  'starry-pleco': { sizeRange: [0.88, 1.16], eggCountRange: [1, 3] },
+  'sea-turtle': { sizeRange: [0.9, 1.12], eggCountRange: [1, 2] },
+  'emperor-angelfish': { sizeRange: [0.9, 1.14], eggCountRange: [1, 2] },
+  'dragon-koi': { sizeRange: [0.92, 1.12], eggCountRange: [1, 1] },
 }
 
 function fish(input: FishInput): FishDefinition {
@@ -212,6 +221,61 @@ export const FISH_CATALOG: FishDefinition[] = [
     description: 'A smiling salamander with frilly gills. Wanders the gravel.',
     color: '#ffb8cb', color2: '#ff4f86', pattern: 'solid', finStyle: 'round',
     bodyLength: 0.55, bodyHeight: 0.14, maxSpeed: 0.3, turnSpeed: 1.6, zone: 'bottom', coinValue: 8,
+  }),
+  // --- late game (levels 13-30): something new every level or two ---
+  fish({
+    id: 'regal-tang', name: 'Regal Tang', rarity: 'rare', cost: 480, unlockLevel: 14,
+    description: 'Electric blue with a sunny yellow tail. Always on the move.',
+    color: '#1f5fd6', color2: '#0d1530', color3: '#ffd23a', pattern: 'stripe', finStyle: 'lunate',
+    bodyLength: 0.42, bodyHeight: 0.3, bodyWidth: 0.45, maxSpeed: 0.75, turnSpeed: 2.4, zone: 'middle', coinValue: 9,
+  }),
+  fish({
+    id: 'moorish-idol', name: 'Moorish Idol', rarity: 'epic', cost: 1100, unlockLevel: 16,
+    description: 'Bold bands and a long streamer fin trailing like a ribbon.',
+    color: '#f6f1de', color2: '#141414', color3: '#ffd84a', pattern: 'bands', finStyle: 'forked', features: ['longFins', 'pointyNose'],
+    bodyLength: 0.4, bodyHeight: 0.38, bodyWidth: 0.35, maxSpeed: 0.55, turnSpeed: 2, zone: 'middle', coinValue: 13,
+  }),
+  fish({
+    kind: 'octopus', id: 'octopus', name: 'Octopus', rarity: 'epic', cost: 1300, unlockLevel: 17,
+    description: 'Eight curious arms and a skin that changes colour. Explores every rock.',
+    color: '#e2643f', color2: '#ffb48a', color3: '#7a2a2a', pattern: 'solid', finStyle: 'round',
+    bodyLength: 0.5, bodyHeight: 0.25, maxSpeed: 0.35, turnSpeed: 1.8, zone: 'bottom', coinValue: 15,
+  }),
+  fish({
+    id: 'flowerhorn', name: 'Flowerhorn', rarity: 'epic', cost: 1400, unlockLevel: 19,
+    description: 'A big, bold cichlid with a proud head bump and glittering spots.',
+    color: '#e8434f', color2: '#2a1a24', color3: '#ffcf5a', pattern: 'spots', finStyle: 'fan', features: ['hump'],
+    bodyLength: 0.55, bodyHeight: 0.36, bodyWidth: 0.55, maxSpeed: 0.5, turnSpeed: 1.8, zone: 'middle', coinValue: 16, appetite: 1.2,
+  }),
+  fish({
+    kind: 'ray', id: 'manta-ray', name: 'Manta Ray', rarity: 'legendary', cost: 2600, unlockLevel: 20,
+    description: 'Glides through the tank on giant wings, as if it were flying.',
+    color: '#2b3a52', color2: '#eef3f7', pattern: 'solid', finStyle: 'round',
+    bodyLength: 0.9, bodyHeight: 0.1, maxSpeed: 0.5, turnSpeed: 1.2, zone: 'middle', coinValue: 22,
+  }),
+  fish({
+    id: 'starry-pleco', name: 'Starry Pleco', rarity: 'epic', cost: 1700, unlockLevel: 22,
+    description: 'Night-sky spots and a sucker mouth. Loves lounging on the gravel.',
+    color: '#1d2430', color2: '#e9f2ff', pattern: 'spots', finStyle: 'round', features: ['whiskers'],
+    bodyLength: 0.55, bodyHeight: 0.16, bodyWidth: 0.9, maxSpeed: 0.35, turnSpeed: 1.4, zone: 'bottom', coinValue: 18,
+  }),
+  fish({
+    kind: 'turtle', id: 'sea-turtle', name: 'Sea Turtle', rarity: 'legendary', cost: 3000, unlockLevel: 24,
+    description: 'A wise old swimmer that rows slowly along on huge flippers.',
+    color: '#6b8f4e', color2: '#8a5a2e', color3: '#e0c48a', pattern: 'solid', finStyle: 'round',
+    bodyLength: 0.7, bodyHeight: 0.25, maxSpeed: 0.35, turnSpeed: 1, zone: 'middle', coinValue: 24, appetite: 0.8,
+  }),
+  fish({
+    id: 'emperor-angelfish', name: 'Emperor Angelfish', rarity: 'legendary', cost: 3200, unlockLevel: 26,
+    description: 'Royal blue with gold stripes. Every reef wants one.',
+    color: '#1a3fa8', color2: '#ffd83a', color3: '#ffffff', pattern: 'stripe', finStyle: 'round',
+    bodyLength: 0.5, bodyHeight: 0.42, bodyWidth: 0.4, maxSpeed: 0.55, turnSpeed: 2, zone: 'middle', coinValue: 26,
+  }),
+  fish({
+    id: 'dragon-koi', name: 'Celestial Dragon Koi', rarity: 'legendary', cost: 6000, unlockLevel: 30,
+    description: 'The crown jewel of any tank. Its scales shimmer like the night sky.',
+    color: '#f5f7ff', color2: '#6c4dff', color3: '#64f5ff', pattern: 'calico', finStyle: 'veil', features: ['whiskers', 'longFins'], glow: true,
+    bodyLength: 0.7, bodyHeight: 0.3, bodyWidth: 0.6, maxSpeed: 0.6, turnSpeed: 1.8, zone: 'middle', coinValue: 40,
   }),
 ]
 

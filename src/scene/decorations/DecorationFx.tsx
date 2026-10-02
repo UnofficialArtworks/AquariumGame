@@ -299,7 +299,7 @@ function SporesFx() {
   return <group ref={ref} position={[0, 0.45, 0]} />
 }
 
-function GlintFx({ height, spread, color }: { height: number; spread: number; color: string }) {
+export function GlintFx({ height, spread, color }: { height: number; spread: number; color: string }) {
   const ref = useRef<THREE.Group>(null)
   const preview = useIsPreview()
   const timer = useRef(Math.random() * 2)

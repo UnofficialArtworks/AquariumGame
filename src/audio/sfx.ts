@@ -147,6 +147,12 @@ export const sfx = {
   water() {
     noise(2.4, { freq: 400, endFreq: 1800, q: 0.7, volume: 0.14, type: 'lowpass' })
   },
+  /** The auto-feeder's dinner bell. */
+  chime() {
+    tone(1568, 0.5, { type: 'triangle', volume: 0.09 })
+    tone(1175, 0.7, { type: 'triangle', volume: 0.09, delay: 0.18 })
+    tone(2350, 0.4, { type: 'sine', volume: 0.03, delay: 0.18 })
+  },
   magic() {
     ;[1047, 1319, 1568, 2093].forEach((f, i) => tone(f, 0.25, { type: 'sine', volume: 0.08, delay: i * 0.05 }))
   },

@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { FishDefinition } from '../state/types'
+import type { FoodItem } from './food'
 
 /**
  * Shared, mutable simulation state that fish, food, coins, bubbles and
@@ -37,6 +38,29 @@ export interface FishAgent {
   bank: number
   sleeping: boolean
   size: number
+  /** The piece of food this fish is heading for (claimed, so others spread out). */
+  food: FoodItem | null
+  /** Smoothed sideways body curve from turning, roughly -1..1. */
+  bend: number
+  /** 0..1 how much the fish is hovering in place (pectoral fins fan). */
+  hover: number
+  /** Seconds left of a happy wiggle after the player taps this fish. */
+  wiggle: number
+  /** World point the eyes look at, and how strongly (0 = look ahead). */
+  gaze: THREE.Vector3
+  gazing: number
+  /** Jellyfish: 0..1 how contracted the bell is right now. */
+  pulse: number
+  /**
+   * Jellyfish: bell-local direction the tentacles hang toward. It lags behind
+   * the bell's turns and streams back as it moves, so they bend instead of
+   * swinging rigidly with it.
+   */
+  trail: THREE.Vector3
+  /** Jellyfish: how far (radians) the tentacle tips trail behind the bell's slow spin. */
+  twist: number
+  /** Jellyfish: bell-local xz direction it is steering toward (its squeeze is lopsided to turn). */
+  steer: THREE.Vector3
 }
 
 export const fishAgents = new Map<string, FishAgent>()

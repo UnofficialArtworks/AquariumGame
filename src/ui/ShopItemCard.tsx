@@ -1,5 +1,4 @@
 import { ItemThumbnail } from './ItemThumbnail'
-import { Button } from './components/Button'
 import type { Rarity } from '../state/types'
 
 interface ShopItemCardProps {
@@ -26,12 +25,28 @@ interface ShopItemCardProps {
 
 export function ShopItemCard({ previewKey, name, description, color, swatch, icon, cost, owned, equipped, affordable, unlockLevel, rarity, onBuy, onEquip, countOwned, packSize, unavailableText, badge }: ShopItemCardProps) {
   const locked = unlockLevel !== undefined
-  return <article className={`shop-item-card ${locked ? 'locked' : ''}`}>
-    <div className="shop-item-art" style={swatch ? { background: `linear-gradient(160deg, ${swatch[0]}, ${swatch[1]})` } : undefined}>
-      {previewKey ? <ItemThumbnail previewKey={previewKey} color={color} className="shop-item-preview" /> : <span className="shop-item-icon">{icon ?? '✦'}</span>}
-      {locked && <span className="shop-lock">🔒 Level {unlockLevel}</span>}
-    </div>
-    <div className="shop-item-copy"><div className="shop-item-heading"><strong>{name}</strong>{!!countOwned && <span className="shop-item-count">×{countOwned}</span>}</div>{rarity && <span className={`rarity rarity-${rarity}`}>{rarity}</span>}{badge && <span className="shop-item-badge">✨ {badge}</span>}<p>{description}</p></div>
-    <div className="shop-item-bottom"><span className="shop-item-cost">{packSize ? `${packSize} for ` : ''}{owned ? 'Owned' : `🪙 ${cost.toLocaleString()}`}</span><Button variant={equipped || owned ? 'secondary' : 'primary'} disabled={locked || (owned ? !onEquip || equipped : !affordable)} onClick={owned ? onEquip : onBuy}>{locked ? `Level ${unlockLevel}` : equipped ? 'Selected' : owned ? onEquip ? 'Use' : 'Owned' : affordable ? 'Buy' : unavailableText ?? 'Need coins'}</Button></div>
-  </article>
+  const canAct = !locked && (owned ? Boolean(onEquip) && !equipped : affordable)
+  const label = locked ? `🔒 Level ${unlockLevel}` : equipped ? '✓ In use' : owned ? (onEquip ? 'Use' : 'Owned') : affordable ? `🪙 ${cost.toLocaleString()}` : unavailableText ?? `🪙 ${cost.toLocaleString()}`
+  return (
+    <article className={`shop-card ${locked ? 'is-locked' : ''} ${equipped ? 'is-equipped' : ''} ${rarity ? `rarity-edge-${rarity}` : ''}`} title={description}>
+      <div className="shop-art" style={swatch ? { background: `linear-gradient(160deg, ${swatch[0]}, ${swatch[1]})` } : undefined}>
+        {previewKey ? <ItemThumbnail previewKey={previewKey} color={color} className="shop-thumb" /> : <span className="shop-icon">{icon ?? '✦'}</span>}
+        {!!countOwned && <span className="shop-count">×{countOwned}</span>}
+        {rarity && rarity !== 'common' && <span className={`rarity rarity-${rarity}`}>{rarity}</span>}
+      </div>
+      <div className="shop-copy">
+        <strong>{name}</strong>
+        {badge && <span className="shop-badge">✨ {badge}</span>}
+        <p>{description}</p>
+      </div>
+      <button
+        className={`shop-buy ${owned || equipped ? 'is-owned' : ''} ${!locked && !owned && !affordable ? 'is-short' : ''}`}
+        disabled={!canAct}
+        onClick={owned ? onEquip : onBuy}
+      >
+        {packSize && !owned && !locked ? <small>{packSize} for </small> : null}
+        {label}
+      </button>
+    </article>
+  )
 }

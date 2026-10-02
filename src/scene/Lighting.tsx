@@ -4,6 +4,7 @@ import { Environment, Lightformer } from '@react-three/drei'
 import * as THREE from 'three'
 import { atmosphere } from './Atmosphere'
 import { HALF_DEPTH, HALF_WIDTH, TANK_HEIGHT } from './TankBounds'
+import { ShadowThrottle } from './RenderBudget'
 
 const SUN_DAY = new THREE.Color('#fff4dc')
 const SUN_NIGHT = new THREE.Color('#7d95ff')
@@ -48,6 +49,7 @@ export function Lighting() {
 
   return (
     <>
+      <ShadowThrottle />
       <hemisphereLight ref={hemiRef} args={['#c4ecff', '#3b5a48', 0.75]} />
       <directionalLight
         ref={sunRef}

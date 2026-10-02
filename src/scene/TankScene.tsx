@@ -15,6 +15,7 @@ import { DragSurface } from './interaction/DragSurface'
 import { TankInteraction } from './interaction/TankInteraction'
 import { DecorationEntity } from './decorations/DecorationEntity'
 import { FishEntity } from './fish/FishEntity'
+import { FishEyesRenderer } from './fish/FishEyes'
 import { FoodRenderer } from './effects/FoodRenderer'
 import { CoinRenderer } from './effects/CoinRenderer'
 import { BubbleRenderer, SparkRenderer } from './effects/BubbleRenderer'
@@ -64,6 +65,7 @@ export function TankScene() {
       {ownedFish.filter((fish) => (fish.habitat ?? 'main') === activeTank).map((instance) => (
         <FishEntity key={instance.id} instance={instance} />
       ))}
+      <FishEyesRenderer />
       <FoodRenderer />
       <CoinRenderer />
       <BubbleRenderer />

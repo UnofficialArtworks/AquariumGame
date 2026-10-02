@@ -10,7 +10,7 @@ import { atmosphere } from '../Atmosphere'
 import { MeshBuilder, type BuiltPart, type V3 } from '../geometry/MeshBuilder'
 import { emitBubble } from '../../sim/bubbles'
 import { emitSparks } from '../../sim/sparks'
-import { gadgetPulses } from '../../sim/gadgets'
+import { gadgetPulses, feederCall } from '../../sim/gadgets'
 import { simClock } from '../../sim/world'
 import { hashString } from '../../utils/rng'
 import {
@@ -77,7 +77,7 @@ function canvasTexture(draw: (ctx: CanvasRenderingContext2D, size: number) => vo
 
 let haloTexture: THREE.CanvasTexture | null = null
 /** Soft round glow, for lamp halos and light blooms. */
-function getHalo(): THREE.CanvasTexture {
+export function getHalo(): THREE.CanvasTexture {
   haloTexture ??= canvasTexture((ctx, s) => {
     const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2)
     g.addColorStop(0, 'rgba(255,255,255,1)')
@@ -288,16 +288,20 @@ function FeederFx({ def, instanceId }: FxProps) {
     }
     const popping = age >= 0 && age < 1.2
     const flash = popping ? Math.exp(-age * 3.2) : 0
+    // Dinner bell: the lantern blinks while it calls the fish over.
+    const callAge = simClock.t - feederCall.from
+    const calling = !preview && instanceId === feederCall.instanceId && callAge >= 0 && callAge < 2.6
+    const blink = calling ? 0.5 + 0.5 * Math.sin(callAge * 14) : 0
 
     if (capRef.current) {
       capRef.current.position.y = FEEDER_CAP_BASE_Y + capHop(age)
       capRef.current.rotation.z = popping && age < 0.8 ? Math.sin(age * 22) * 0.05 * Math.exp(-age * 5) : 0
     }
     if (spinRef.current) spinRef.current.rotation.y = preview ? 0.6 : t * 0.8 + s.phase
-    glow.opacity = preview ? 0.14 : 0.1 + night * 0.28 + flash * 0.35 + Math.sin(t * 1.7) * 0.015
-    halo.opacity = preview ? 0.3 : 0.28 + night * 0.5 + flash * 0.3
-    haloRef.current?.scale.setScalar(preview ? 0.34 : 0.36 + Math.sin(t * 2.1) * 0.02 + night * 0.06 + flash * 0.18)
-    beam.uniforms.uIntensity.value = 0.1 + night * 0.9 + flash * 0.5
+    glow.opacity = preview ? 0.14 : 0.1 + night * 0.28 + flash * 0.35 + blink * 0.3 + Math.sin(t * 1.7) * 0.015
+    halo.opacity = preview ? 0.3 : 0.28 + night * 0.5 + flash * 0.3 + blink * 0.35
+    haloRef.current?.scale.setScalar(preview ? 0.34 : 0.36 + Math.sin(t * 2.1) * 0.02 + night * 0.06 + flash * 0.18 + blink * 0.1)
+    beam.uniforms.uIntensity.value = 0.1 + night * 0.9 + flash * 0.5 + blink * 0.7
   })
 
   return (

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import type { FishDefinition, FishInstance } from '../../state/types'
 import type { FishAgent } from '../../sim/world'
 import { useFishBrain } from '../fish/useFishBrain'
@@ -49,7 +50,12 @@ function buildBody(def: FishDefinition) {
   return b.build({ groundAO: false })
 }
 
-function buildGill(def: FishDefinition, index: number): THREE.BufferGeometry[] {
+/** One feathery gill (stalk + six plumes) baked into a single mesh. */
+function buildGill(def: FishDefinition, index: number): THREE.BufferGeometry {
+  return mergeGeometries(buildGillParts(def, index))!
+}
+
+function buildGillParts(def: FishDefinition, index: number): THREE.BufferGeometry[] {
   const L = def.bodyLength
   const up = (index - 1) * 0.5
   const pts: Array<[number, number, number]> = [
@@ -105,21 +111,32 @@ export function AxolotlVisual({ def, agentRef }: { def: FishDefinition; agentRef
   const gillRefs = useRef<Array<THREE.Group | null>>([])
   const tailRef = useRef<THREE.Group>(null)
 
+  const bodyRef = useRef<THREE.Group>(null)
+
   useFrame(({ clock }) => {
     const agent = agentRef?.current
     const t = clock.elapsedTime
     const walk = agent ? agent.swimPhase : t * 4
     const effort = agent ? Math.min(1, agent.effort) : 0.4
+    // Diagonal legs step together, like a real salamander walk.
     legRefs.current.forEach((g, i) => {
       if (!g) return
       const phase = walk * 0.8 + (i % 2 === 0 ? 0 : Math.PI) + (i < 2 ? 0 : Math.PI)
       g.rotation.y = Math.sin(phase) * 0.6 * effort
+      g.rotation.x = Math.max(0, Math.cos(phase)) * 0.25 * effort
     })
+    // The whole body sways side to side with each step, the tail following.
+    if (bodyRef.current) {
+      bodyRef.current.rotation.y = Math.sin(walk * 0.8) * 0.12 * effort + (agent ? agent.bend * 0.15 : 0)
+      bodyRef.current.position.y = Math.abs(Math.sin(walk * 0.8)) * L * 0.015 * effort
+    }
+    // Feathery gills ripple and flare as it breathes.
     gillRefs.current.forEach((g, i) => {
       if (!g) return
-      g.rotation.x = Math.sin(t * 2 + i) * 0.15
+      g.rotation.x = Math.sin(t * 2 + i) * 0.15 + Math.sin(t * 5.5 + i * 0.7) * 0.05
+      g.scale.y = 1 + Math.sin(t * 1.6 + i * 0.4) * 0.08
     })
-    if (tailRef.current) tailRef.current.rotation.y = Math.sin(walk * 0.9) * (0.2 + effort * 0.3)
+    if (tailRef.current) tailRef.current.rotation.y = Math.sin(walk * 0.8 - 1.2) * (0.25 + effort * 0.35)
   })
 
   const legSpots: Array<[number, number, number, number]> = [
@@ -131,6 +148,7 @@ export function AxolotlVisual({ def, agentRef }: { def: FishDefinition; agentRef
 
   return (
     <group rotation={[0, Math.PI / 2, 0]}>
+      <group ref={bodyRef}>
         {body.map((p, i) => (
           <mesh key={i} geometry={p.geometry} material={decorMaterials[p.material]} castShadow />
         ))}
@@ -150,7 +168,7 @@ export function AxolotlVisual({ def, agentRef }: { def: FishDefinition; agentRef
           </group>
         ))}
         {[1, -1].map((side) =>
-          gills.map((parts, gi) => (
+          gills.map((gill, gi) => (
             <group
               key={`${side}-${gi}`}
               ref={(g) => {
@@ -159,12 +177,11 @@ export function AxolotlVisual({ def, agentRef }: { def: FishDefinition; agentRef
               position={[L * 0.2, L * 0.03 + (gi - 1) * L * 0.035, side * L * 0.1]}
               scale={[1, 1, side]}
             >
-              {parts.map((g, k) => (
-                <mesh key={k} geometry={g} material={gillMaterial(def.color2)} />
-              ))}
+              <mesh geometry={gill} material={gillMaterial(def.color2)} />
             </group>
           )),
         )}
+      </group>
     </group>
   )
 }

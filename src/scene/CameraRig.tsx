@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { useUIStore } from '../state/useUIStore'
 import { fishAgents } from '../sim/world'
 import { TANK_HEIGHT, TANK_WIDTH } from './TankBounds'
+import { screenInsets } from '../ui/screenInsets'
 
 const FOV = 42
 const TARGET_Y = TANK_HEIGHT * 0.42
@@ -39,6 +40,7 @@ export function CameraRig() {
   const home = useMemo(() => fitDistance(size.width / Math.max(1, size.height)), [size.width, size.height])
   const intro = useRef(0)
   const lastInput = useRef(performance.now())
+  const frame = useRef({ shift: 0, zoom: 1 })
   const followTarget = useMemo(() => new THREE.Vector3(), [])
   const delta = useMemo(() => new THREE.Vector3(), [])
 
@@ -69,6 +71,7 @@ export function CameraRig() {
     const controls = controlsRef.current
     if (!controls) return
     const dt = Math.min(rawDelta, 0.05)
+    keepTankInView(dt)
 
     // Fly-in on load: sweep from high and far to the home view.
     if (intro.current < 1) {
@@ -107,6 +110,36 @@ export function CameraRig() {
     }
     controls.update()
   })
+
+  /**
+   * When a dock drawer slides up over the bottom of the screen, nudge the
+   * picture up (and shrink it a little if needed) so the tank stays centred
+   * in the space that's still visible.
+   */
+  function keepTankInView(dt: number) {
+    const cam = camera as THREE.PerspectiveCamera
+    const W = size.width
+    const H = size.height
+    const covered = Math.max(0, screenInsets.bottom - screenInsets.bar)
+    const usual = Math.max(1, H - screenInsets.top - screenInsets.bar)
+    const f = frame.current
+    const k = 1 - Math.exp(-dt * 6)
+    f.shift += (covered / 2 - f.shift) * k
+    f.zoom += (THREE.MathUtils.clamp((usual - covered) / usual, 0.72, 1) - f.zoom) * k
+    const view = cam.view
+    if (Math.abs(f.shift) < 0.5 && Math.abs(1 - f.zoom) < 0.002) {
+      if (view?.enabled) {
+        cam.clearViewOffset()
+        cam.zoom = 1
+        cam.updateProjectionMatrix()
+      }
+      return
+    }
+    if (!view || !view.enabled || Math.abs(view.offsetY - f.shift) > 0.25 || view.fullWidth !== W || view.fullHeight !== H || Math.abs(cam.zoom - f.zoom) > 0.0005) {
+      cam.zoom = f.zoom
+      cam.setViewOffset(W, H, 0, f.shift, W, H)
+    }
+  }
 
   return (
     <>

@@ -29,7 +29,7 @@ export interface DecorationDefinition {
   bonus?: DecorationBonus
 }
 
-export type CreatureKind = 'fish' | 'jellyfish' | 'seahorse' | 'axolotl' | 'snail' | 'shrimp'
+export type CreatureKind = 'fish' | 'jellyfish' | 'seahorse' | 'axolotl' | 'snail' | 'shrimp' | 'octopus' | 'ray' | 'turtle'
 export type FishZone = 'top' | 'middle' | 'bottom' | 'any'
 export type FinStyle = 'forked' | 'fan' | 'veil' | 'sword' | 'shark' | 'round' | 'lunate'
 export type PatternType =
@@ -83,14 +83,28 @@ export interface DecorationInstance {
   rotationY: number
 }
 
+export type MorphId = 'golden' | 'pearl' | 'midnight' | 'aurora'
+
 export interface FishInheritance {
   bodyParentName: string
   colorParentName: string
   bodyParentId: string
   colorParentId: string
+  /** The inherited palette (a morph, if any, is worn on top of it). */
   color: string
   color2: string
   color3?: string
+  /** Hatched as a rare colour morph. */
+  morph?: MorphId
+}
+
+export interface FishpediaEntry {
+  /** When the species first joined one of your tanks. */
+  discoveredAt: number
+  /** Raised from an egg in the nursery at least once. */
+  bred?: boolean
+  /** Rare colour morphs of this species you've hatched. */
+  morphs?: MorphId[]
 }
 
 export interface FishInstance {
@@ -178,4 +192,6 @@ export interface GameState {
   waste: WasteItem[]
   stats: GameStats
   settings: GameSettings
+  /** Collection book: every species (and morph) that has ever lived in your tanks. */
+  fishpedia: Record<string, FishpediaEntry>
 }

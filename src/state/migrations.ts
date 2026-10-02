@@ -8,8 +8,24 @@ import { DEFAULT_STAND_ID, STAND_CATALOG } from '../scene/stands/standDefinition
 import { DEFAULT_GLASS_TOOL, DEFAULT_GRAVEL_TOOL, getToolDef, STARTER_TOOL_IDS } from '../scene/cleaning/toolDefinitions'
 import { pickFishName } from './names'
 import { NURSERY_CAPACITY } from './economy'
+import { recordFish, sanitizeFishpedia, type Fishpedia } from './fishpedia'
+import { getMorph } from './morphs'
 
-export const CURRENT_SAVE_VERSION = 5
+export const CURRENT_SAVE_VERSION = 6
+
+/** Make sure every fish you own (and its morph / nursery stamp) is in the book. */
+function backfillFishpedia(book: Fishpedia, ownedFish: FishInstance[]): Fishpedia {
+  const hatched = ownedFish.filter((f) => f.inheritance)
+  const bought = ownedFish.filter((f) => !f.inheritance)
+  return recordFish(recordFish(book, bought, false).book, hatched, true).book
+}
+
+function sanitizeInheritance<T extends { inheritance?: FishInstance['inheritance'] }>(item: T): T {
+  const morph = item.inheritance?.morph
+  if (!morph || getMorph(morph)) return item
+  const { morph: _drop, ...rest } = item.inheritance!
+  return { ...item, inheritance: rest }
+}
 
 export function freshVitals(hunger = 0.5): FishVitals {
   return { hunger, growth: 0.1, mealsEaten: 0 }
@@ -72,6 +88,7 @@ export function createInitialState(): GameState {
       fishBought: 0,
     },
     settings: { sound: true },
+    fishpedia: backfillFishpedia({}, ownedFish),
   }
 }
 
@@ -125,10 +142,11 @@ export function sanitize(state: Partial<GameState>): GameState {
     .map((f) => {
       const defId = resolveFishId(f.defId)
       const [min, max] = getFishDef(defId)?.sizeRange ?? [1, 1]
-      return { ...f, defId, habitat: f.habitat === 'nursery' ? 'nursery' as const : 'main' as const,
-        sizeScale: Number.isFinite(f.sizeScale) && f.sizeScale >= min && f.sizeScale <= max ? f.sizeScale : 1 }
+      return sanitizeInheritance({ ...f, defId, habitat: f.habitat === 'nursery' ? 'nursery' as const : 'main' as const,
+        sizeScale: Number.isFinite(f.sizeScale) && f.sizeScale >= min && f.sizeScale <= max ? f.sizeScale : 1 })
     })
     .filter((f) => getFishDef(f.defId))
+  merged.fishpedia = backfillFishpedia(sanitizeFishpedia(state.fishpedia), merged.ownedFish)
   for (const f of merged.ownedFish) {
     if (!merged.fishVitals[f.id]) merged.fishVitals = { ...merged.fishVitals, [f.id]: freshVitals(0.4) }
   }
@@ -154,7 +172,7 @@ export function sanitize(state: Partial<GameState>): GameState {
       return true
     })
     .slice(0, Math.max(0, NURSERY_CAPACITY - occupiedNursery))
-    .map((egg) => ({ ...egg, defId: resolveFishId(egg.defId), remainingSeconds: Math.max(0, Math.min(egg.hatchSeconds, egg.remainingSeconds)) }))
+    .map((egg) => sanitizeInheritance({ ...egg, defId: resolveFishId(egg.defId), remainingSeconds: Math.max(0, Math.min(egg.hatchSeconds, egg.remainingSeconds)) }))
   const session = state.nurserySession
   const parents = session?.parentIds
   const eggCount = Number.isInteger(session?.eggCount) && session!.eggCount >= 1 && session!.eggCount <= 6

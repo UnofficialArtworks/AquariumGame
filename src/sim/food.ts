@@ -19,6 +19,10 @@ export interface FoodItem {
   phase: number
   spin: THREE.Euler
   removed: boolean
+  /** Upward speed from being popped out of a feeder; decays as it rises. */
+  rise: number
+  /** How many fish are currently heading for this piece (they spread out). */
+  claims: number
 }
 
 const MAX_FOOD = 90
@@ -51,6 +55,8 @@ function spawn(def: FoodDefinition, x: number, y: number, z: number, inedible: b
     phase: Math.random() * Math.PI * 2,
     spin: new THREE.Euler(Math.random() * 6, Math.random() * 6, Math.random() * 6),
     removed: false,
+    rise: 0,
+    claims: 0,
   }
   if (foodItems.length >= MAX_FOOD) {
     const oldest = foodItems.shift()
@@ -72,14 +78,49 @@ export function dropFood(foodId: string, x: number, z: number): number {
   return def.pieces
 }
 
-/** Pop a few pieces of food out of a point underwater (the auto-feeder's lantern). */
-export function releaseFoodAt(foodId: string, position: THREE.Vector3, pieces: number) {
+/**
+ * Pop a few pieces of food out of a point underwater (the auto-feeder's
+ * lantern). They fountain upward first, so fish get time to catch them
+ * before they settle on the gravel.
+ */
+export function releaseFoodAt(foodId: string, position: THREE.Vector3, pieces: number, rise = 1.5) {
   const def = getFoodDef(foodId)
   for (let i = 0; i < pieces; i++) {
     const item = spawn(def, position.x, Math.min(position.y, waterLevel.current - 0.1), position.z, false)
     const angle = (i / pieces) * Math.PI * 2 + Math.random()
-    item.drift.set(Math.cos(angle) * 0.35, 0, Math.sin(angle) * 0.35)
+    const out = 0.28 + Math.random() * 0.22
+    item.drift.set(Math.cos(angle) * out, 0, Math.sin(angle) * out)
+    item.rise = rise * (0.75 + Math.random() * 0.5)
   }
+}
+
+const RISE_DECAY = 2.2
+const DRIFT_DECAY = 0.5
+
+/**
+ * Where a piece of food will be `seconds` from now (roughly), so fish can
+ * lead a falling pellet instead of chasing the spot it used to be.
+ */
+export function predictFood(item: FoodItem, seconds: number, out: THREE.Vector3): THREE.Vector3 {
+  out.copy(item.position)
+  if (item.state === 'resting' || seconds <= 0) return out
+  let t = seconds
+  if (item.state === 'floating') {
+    const floating = Math.min(t, Math.max(0, item.def.floatTime - item.age))
+    out.addScaledVector(item.drift, floating * 0.6)
+    t -= floating
+  }
+  if (t > 0) {
+    const driftT = (1 - Math.exp(-DRIFT_DECAY * t)) / DRIFT_DECAY
+    out.x += item.drift.x * driftT
+    out.z += item.drift.z * driftT
+    out.y += (item.rise * (1 - Math.exp(-RISE_DECAY * t))) / RISE_DECAY - item.def.sinkSpeed * 0.8 * t
+  }
+  const [cx, cz] = clampToInterior(out.x, out.z, 0.05)
+  out.x = cx
+  out.z = cz
+  out.y = Math.min(waterLevel.current - 0.02, Math.max(floorHeightAt(cx, cz) + 0.02, out.y))
+  return out
 }
 
 export function dropPoop(position: THREE.Vector3) {
@@ -119,6 +160,11 @@ export function updateFood(dt: number, time: number) {
     } else if (item.state === 'sinking') {
       const flutter = item.def.visual === 'flake' ? 0.25 : item.def.visual === 'worm' ? 0.1 : 0.05
       item.position.y -= item.def.sinkSpeed * dt * (0.8 + Math.sin(time * 2.2 + item.phase) * 0.35)
+      if (item.rise > 0.01) {
+        item.position.y = Math.min(item.position.y + item.rise * dt, surface - 0.04)
+        item.rise *= Math.exp(-RISE_DECAY * dt)
+      }
+      item.drift.multiplyScalar(Math.exp(-DRIFT_DECAY * dt))
       item.position.x += Math.sin(time * 1.7 + item.phase) * flutter * dt + item.drift.x * dt
       item.position.z += Math.cos(time * 1.3 + item.phase) * flutter * dt + item.drift.z * dt
       item.spin.x += dt * 1.5

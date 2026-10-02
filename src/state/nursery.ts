@@ -1,17 +1,28 @@
 import { getFishDef } from '../scene/fish/fishDefinitions'
+import { morphedDefinition, rollMorph } from './morphs'
 import type { FishInstance, NurseryEgg } from './types'
 
 /** Body/species from one parent, actual colors from the other, including later generations. */
 export function inheritedDefinition(fish: Pick<FishInstance, 'defId' | 'inheritance'>) {
   const def = getFishDef(fish.defId)
   if (!def || !fish.inheritance) return def
-  const { color, color2, color3 } = fish.inheritance
-  return { ...def, color, color2, color3 }
+  const { color, color2, color3, morph } = fish.inheritance
+  return morphedDefinition({ ...def, color, color2, color3 }, morph)
+}
+
+/** A fish's own colours underneath any morph it wears. */
+function basePalette(fish: FishInstance) {
+  if (fish.inheritance) return fish.inheritance
+  const def = getFishDef(fish.defId)!
+  return { color: def.color, color2: def.color2, color3: def.color3 }
 }
 
 export function createNurseryEgg(first: FishInstance, second: FishInstance, createdAt = Date.now()): NurseryEgg {
   const [body, colors] = Math.random() < 0.5 ? [first, second] : [second, first]
-  const palette = inheritedDefinition(colors)!
+  // A morph is rolled fresh for every egg (more likely from a morph parent);
+  // otherwise the colour parent passes on its underlying palette.
+  const palette = basePalette(colors)
+  const morph = rollMorph([first.inheritance?.morph, second.inheritance?.morph])
   const hatchSeconds = sampleEggHatchSeconds(body.defId)
   return {
     id: crypto.randomUUID(), defId: body.defId, createdAt, hatchSeconds, remainingSeconds: hatchSeconds,
@@ -19,6 +30,7 @@ export function createNurseryEgg(first: FishInstance, second: FishInstance, crea
       bodyParentName: body.name, colorParentName: colors.name,
       bodyParentId: body.id, colorParentId: colors.id,
       color: palette.color, color2: palette.color2, color3: palette.color3,
+      ...(morph ? { morph } : {}),
     },
   }
 }

@@ -18,6 +18,9 @@ import { SeahorseEntity } from '../creatures/Seahorse'
 import { AxolotlEntity } from '../creatures/Axolotl'
 import { SnailEntity } from '../creatures/Snail'
 import { ShrimpEntity } from '../creatures/Shrimp'
+import { OctopusEntity } from '../creatures/Octopus'
+import { MantaRayEntity } from '../creatures/MantaRay'
+import { SeaTurtleEntity } from '../creatures/SeaTurtle'
 
 function randomStartPosition(): [number, number, number] {
   return [
@@ -70,7 +73,7 @@ export function CreatureOverlay({
     [],
   )
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
     const sprite = spriteRef.current
     if (!sprite) return
     const agent = agentRef.current
@@ -90,7 +93,7 @@ export function CreatureOverlay({
       }
     }
     const targetOpacity = icon ? 1 : 0
-    iconMaterial.opacity = THREE.MathUtils.lerp(iconMaterial.opacity, targetOpacity, 0.1)
+    iconMaterial.opacity = THREE.MathUtils.damp(iconMaterial.opacity, targetOpacity, 6, delta)
     sprite.visible = iconMaterial.opacity > 0.02
     const bob = Math.sin(clock.elapsedTime * 2.5 + fishId.length) * 0.03
     sprite.position.set(0, iconHeight + bob, 0)
@@ -108,14 +111,18 @@ export function CreatureOverlay({
     if (e.delta > 6) return
     e.stopPropagation()
     const ui = useUIStore.getState()
-    ui.selectFish(ui.selectedFishId === fishId ? null : fishId)
+    const selecting = ui.selectedFishId !== fishId
+    ui.selectFish(selecting ? fishId : null)
     sfx.click()
+    // Say hi: a happy shimmy and a look at the player.
+    if (selecting && agentRef.current && !agentRef.current.sleeping) agentRef.current.wiggle = 1.1
   }
 
   return (
     <>
       {interactive && (
-        <mesh geometry={hitGeometry} material={hitMaterial} scale={radius} onClick={onClick} userData={{ fishHit: fishId }} />
+        // Invisible to the renderer (no draw call) but still raycast for taps.
+        <mesh geometry={hitGeometry} material={hitMaterial} scale={radius} onClick={onClick} userData={{ fishHit: fishId }} visible={false} />
       )}
       <sprite ref={spriteRef} material={iconMaterial} renderOrder={20} />
       <sprite ref={haloRef} material={haloMaterial} visible={false} renderOrder={19} />
@@ -158,6 +165,12 @@ export function FishEntity({ instance }: { instance: FishInstance }) {
       return <SnailEntity instance={instance} def={def} />
     case 'shrimp':
       return <ShrimpEntity instance={instance} def={def} />
+    case 'octopus':
+      return <OctopusEntity instance={instance} def={def} />
+    case 'ray':
+      return <MantaRayEntity instance={instance} def={def} />
+    case 'turtle':
+      return <SeaTurtleEntity instance={instance} def={def} />
     default:
       return <SwimmingFish instance={instance} def={def} />
   }

@@ -10,6 +10,14 @@ import { FOOD_CATALOG } from '../src/scene/food/foodDefinitions'
 import { levelFromXp } from '../src/state/progression'
 import { FRIENDSHIP_SECONDS, NURSERY_CAPACITY, PASSIVE_COINS_PER_SECOND, sizeForGrowth } from '../src/state/economy'
 import { createNurseryEgg, getEggCountRange, getEggHatchRange, inheritedDefinition } from '../src/state/nursery'
+import { getMorph, rollMorph } from '../src/state/morphs'
+import { BRED_COINS, DISCOVERY_XP, MORPH_COINS } from '../src/state/fishpedia'
+import type { FishInstance } from '../src/state/types'
+
+/** A fish's own colours under any morph: what it passes on to its eggs. */
+function basePalette(fish: FishInstance) {
+  return fish.inheritance ?? getFishDef(fish.defId)!
+}
 
 const storage = new Map<string, string>()
 Object.defineProperty(globalThis, 'localStorage', { value: {
@@ -21,7 +29,9 @@ Object.defineProperty(globalThis, 'window', { value: { localStorage }, configura
 
 const { useGameStore: store } = await import('../src/state/useGameStore')
 const { useUIStore: ui } = await import('../src/state/useUIStore')
-const { dropFood, foodItems, updateFood, vacuumFoodNear } = await import('../src/sim/food')
+const { dropFood, foodItems, predictFood, releaseFoodAt, updateFood, vacuumFoodNear } = await import('../src/sim/food')
+const THREE = await import('three')
+const { floorHeightAt } = await import('../src/scene/TankBounds')
 const { loadAlgae, algaeCoverage, scrubAlgae, growAlgae, saveAlgae } = await import('../src/sim/algae')
 
 beforeEach(() => {
@@ -262,7 +272,7 @@ test('offspring inherit one parent body and the other parent actual palette acro
   const [first, second, third] = createInitialState().ownedFish
   const firstEgg = createNurseryEgg(first, second)
   const colorParent = firstEgg.inheritance!.colorParentId === first.id ? first : second
-  const inheritedColors = inheritedDefinition(colorParent)!
+  const inheritedColors = basePalette(colorParent)
   assert.equal(firstEgg.inheritance?.color, inheritedColors.color)
   assert.equal(firstEgg.inheritance?.color2, inheritedColors.color2)
   assert.equal(firstEgg.inheritance?.color3, inheritedColors.color3)
@@ -271,7 +281,7 @@ test('offspring inherit one parent body and the other parent actual palette acro
   const secondEgg = createNurseryEgg(grownChild, third)
   const nextColorParent = secondEgg.inheritance!.colorParentId === grownChild.id ? grownChild : third
   const nextBodyParent = secondEgg.inheritance!.bodyParentId === grownChild.id ? grownChild : third
-  const inheritedAgain = inheritedDefinition(nextColorParent)!
+  const inheritedAgain = basePalette(nextColorParent)
   assert.equal(secondEgg.defId, nextBodyParent.defId)
   assert.equal(secondEgg.inheritance?.color, inheritedAgain.color)
   assert.equal(secondEgg.inheritance?.color2, inheritedAgain.color2)
@@ -536,4 +546,79 @@ test('relocated waste stays inside the tank', () => {
   store.getState().relocateWaste([{ id, x: 99, z: -99 }])
   const w = store.getState().waste[0]
   assert.ok(Math.abs(w.x) < 4 && Math.abs(w.z) < 2)
+})
+
+test('feeder pellets fountain up before sinking, and fish can lead falling food', () => {
+  const spout = new THREE.Vector3(0, 1.4, 0)
+  releaseFoodAt('pellets', spout, 6)
+  assert.equal(foodItems.length, 6)
+  for (let i = 0; i < 20; i++) updateFood(0.05, i * 0.05)
+  assert.ok(foodItems.some((f) => f.position.y > spout.y + 0.2), 'pellets should rise above the lantern first')
+  for (let i = 0; i < 400; i++) updateFood(0.05, 1 + i * 0.05)
+  assert.ok(foodItems.every((f) => f.state === 'resting'), 'pellets eventually settle')
+
+  foodItems.length = 0
+  dropFood('pellets', 1, 0.5)
+  for (let i = 0; i < 30; i++) updateFood(0.05, i * 0.05)
+  const pellet = foodItems[0]
+  assert.equal(pellet.state, 'sinking')
+  const ahead = predictFood(pellet, 1, new THREE.Vector3())
+  assert.ok(ahead.y < pellet.position.y, 'a sinking pellet is predicted lower')
+  const later = predictFood(pellet, 60, new THREE.Vector3())
+  assert.ok(Math.abs(later.y - (floorHeightAt(later.x, later.z) + 0.02)) < 1e-6, 'prediction stops at the gravel')
+})
+
+test('late game unlocks something new at every level from 13 to 30', () => {
+  const catalogs = [...FISH_CATALOG, ...DECORATION_CATALOG, ...BACKGROUND_CATALOG, ...SUBSTRATE_CATALOG, ...FOOD_CATALOG]
+  for (let level = 13; level <= 30; level++) {
+    assert.ok(catalogs.some((d) => d.unlockLevel === level), `nothing unlocks at level ${level}`)
+  }
+})
+
+test('rare morphs: rare by default, likelier from a morph parent, worn over the base palette', () => {
+  assert.equal(rollMorph([], () => 0.99), undefined)
+  assert.equal(rollMorph([], () => 0.2), undefined)
+  assert.ok(rollMorph([], () => 0))
+  // A morph parent raises the odds and often passes on its own morph.
+  const rolls = [0.2, 0.1, 0]
+  assert.equal(rollMorph(['midnight'], () => rolls.shift()!), 'midnight')
+  const inheritance = { bodyParentName: 'A', colorParentName: 'B', bodyParentId: 'a', colorParentId: 'b', color: '#123456', color2: '#654321', morph: 'golden' as const }
+  const golden = inheritedDefinition({ defId: 'guppy', inheritance })!
+  assert.equal(golden.color, getMorph('golden')!.color)
+  const parent: FishInstance = { ...createInitialState().ownedFish[1], inheritance }
+  const egg = createNurseryEgg(parent, parent)
+  assert.equal(egg.inheritance?.color, '#123456')
+})
+
+test('fishpedia records each species once, nursery stamps and morphs, with rewards that persist', () => {
+  const book = store.getState().fishpedia
+  assert.ok(book.goldfish && book.guppy && book['neon-tetra'])
+  const fresh = FISH_CATALOG.find((d) => d.unlockLevel <= 2 && !book[d.id])!
+  store.setState({ currency: 5000, xp: 60 })
+  store.getState().buyFish(fresh.id)
+  const firstBuyXp = Math.max(3, Math.round(fresh.cost / 20))
+  assert.equal(store.getState().xp, 60 + firstBuyXp + DISCOVERY_XP[fresh.rarity])
+  assert.ok(store.getState().fishpedia[fresh.id])
+  store.getState().buyFish(fresh.id)
+  assert.equal(store.getState().xp, 60 + firstBuyXp * 2 + DISCOVERY_XP[fresh.rarity])
+
+  const parent = store.getState().ownedFish[0]
+  const def = getFishDef(parent.defId)!
+  const coins = store.getState().currency
+  const hatchling: FishInstance = { ...parent, id: 'hatchling', inheritance: { bodyParentName: 'A', colorParentName: 'B', bodyParentId: 'a', colorParentId: 'b', color: '#fff', color2: '#000', morph: 'golden' } }
+  store.getState().noteFish([hatchling], true)
+  store.getState().noteFish([hatchling], true)
+  const entry = store.getState().fishpedia[parent.defId]
+  assert.equal(entry.bred, true)
+  assert.deepEqual(entry.morphs, ['golden'])
+  assert.equal(store.getState().currency, coins + BRED_COINS[def.rarity] + MORPH_COINS)
+
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  assert.deepEqual(saved.fishpedia[parent.defId].morphs, ['golden'])
+  const restored = migrate({ ...saved, fishpedia: { ...saved.fishpedia, 'not-a-fish': { discoveredAt: 1 } } }, 5)
+  assert.deepEqual(restored.fishpedia[parent.defId].morphs, ['golden'])
+  assert.equal(restored.fishpedia['not-a-fish'], undefined)
+  // Old saves without a book get one filled in from the fish they own.
+  const { fishpedia: _book, ...legacy } = saved
+  assert.ok(migrate(legacy, 5).fishpedia[fresh.id])
 })
