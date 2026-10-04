@@ -13,8 +13,8 @@ A cozy 3D aquarium you can play right in your browser. Fill a tank with fish, de
 - **Raise baby fish.** Two grown fish can become friends in the nursery and welcome a clutch of eggs. Babies take their shape from one parent, their colors from the other and a pattern from either. Two parents with the same pattern can surprise you with a brand-new one, and once in a while a rare color appears.
 - **Welcome visitors.** Special guests like a Treasure Crab, a Hermit Crab or a Leafy Sea Dragon drop by when your tank has something they love. They stay a little while and leave a gift. The Fishpedia gives a hint for each one, so you can work out how to meet them all.
 - **Open the Koi Pond.** At level 20 a third tank opens: a calm pond with its own pond fish, like the Butterfly Koi, that stays sparkling clean.
-- **Go fishing.** A few casts a day to reel in coins, treats, and sometimes a brand-new fish, now and then in a rare colour.
-- **Release fish to the Open Ocean.** When a fish is fully grown you can let it swim free. It lives on in your ocean, where you can watch it any time, and every fish you release raises the tide for rewards.
+- **Go fishing.** A few casts a day at a garden pond. Wait for the big splash, then reel your catch in with well-timed taps (bigger fish fight harder). You might land coins, treats, or a brand-new fish, now and then in a rare colour.
+- **Release fish to the Open Ocean.** When a fish is fully grown you can let it swim free. It lives on in your ocean, where you can watch it swim by, look back through everyone you've released (sorted by date, species or rarity), and every fish you release raises the tide for rewards.
 - **Celebrate the seasons.** Spring Bloom, Summer Reef, Spooky Seas and Winter Lights each bring a decoration and a special visitor. They come back every year, so nobody misses out.
 - **Fill your Fishpedia.** Every species you meet goes in your collection book, with rewards for milestones.
 - **Make wishes come true.** Three small wishes each day, trophies to earn, and a beauty score that grows as you decorate with style.

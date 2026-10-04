@@ -1061,6 +1061,53 @@ test('releasing grown fish to the Open Ocean pays like a sale, keeps them in the
   assert.deepEqual(migrate({ ...saved, ocean: [{ id: 'x', defId: 'nope', name: 'X', at: 1 }, 'junk'] }, 6).ocean, [])
 })
 
+test('the ocean book remembers how each fish looked and can be sorted, filtered and searched', async () => {
+  const { oceanLooks, oceanRoster, hasSpecialPattern } = await import('../src/state/ocean')
+  const { fishPreviewKey } = await import('../src/state/usePreviewStore')
+  const guppy = getFishDef('guppy')!
+  // A store-bought fish has nothing special to remember; a hatchling keeps its morph, pattern and its own colours.
+  assert.deepEqual(oceanLooks({ defId: 'guppy' }), {})
+  const family = { bodyParentName: 'A', colorParentName: 'B', bodyParentId: 'a', colorParentId: 'b' }
+  assert.deepEqual(oceanLooks({ defId: 'guppy', inheritance: { ...family, color: guppy.color, color2: guppy.color2, color3: guppy.color3 } }), {})
+  assert.deepEqual(oceanLooks({ defId: 'guppy', inheritance: { ...family, color: '#112233', color2: '#445566', morph: 'aurora', pattern: 'spots' } }), {
+    morph: 'aurora',
+    pattern: 'spots',
+    color: '#112233',
+    color2: '#445566',
+  })
+  // Its own colours make a different thumbnail, unless a morph covers them.
+  const palette = { color: '#112233', color2: '#445566' }
+  assert.notEqual(fishPreviewKey('guppy', undefined, undefined, palette), fishPreviewKey('guppy'))
+  assert.equal(fishPreviewKey('guppy', 'golden', undefined, palette), fishPreviewKey('guppy', 'golden'))
+
+  const shark = getFishDef('reef-shark')!
+  const ocean = [
+    { id: '1', defId: 'guppy', name: 'Zed', at: 300 },
+    { id: '2', defId: 'reef-shark', name: 'Amy', at: 100, morph: 'golden' as const },
+    { id: '3', defId: 'guppy', name: 'Bo', at: 200, pattern: 'tiger' as const },
+    { id: '4', defId: 'guppy', name: 'Cy', at: 400, pattern: guppy.pattern },
+  ]
+  const names = (list: typeof ocean) => list.map((f) => f.name)
+  assert.deepEqual(names(oceanRoster(ocean, 'newest')), ['Cy', 'Zed', 'Bo', 'Amy'])
+  assert.deepEqual(names(oceanRoster(ocean, 'oldest')), ['Amy', 'Bo', 'Zed', 'Cy'])
+  assert.deepEqual(names(oceanRoster(ocean, 'name')), ['Amy', 'Bo', 'Cy', 'Zed'])
+  assert.equal(oceanRoster(ocean, 'rarest')[0].defId, shark.rarity === 'common' ? 'guppy' : 'reef-shark')
+  assert.deepEqual(names(oceanRoster(ocean, 'newest', 'rare-colours')), ['Amy'])
+  // Wearing your species' usual pattern isn't special.
+  assert.ok(!hasSpecialPattern(ocean[3]))
+  assert.deepEqual(names(oceanRoster(ocean, 'newest', 'patterns')), ['Bo'])
+  assert.deepEqual(names(oceanRoster(ocean, 'newest', 'all', 'zE')), ['Zed'])
+  assert.equal(oceanRoster(ocean, 'newest', 'all', 'shark').length, 1)
+  // Sorting never changes the saved list.
+  assert.deepEqual(names(ocean), ['Zed', 'Amy', 'Bo', 'Cy'])
+
+  // Saved colours survive a reload; bad ones are dropped.
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  const kept = migrate({ ...saved, ocean: [{ id: 'k', defId: 'guppy', name: 'K', at: 1, color: '#112233', color2: '#445566' }, { id: 'j', defId: 'guppy', name: 'J', at: 2, color: 'red', color2: '#445566' }] }, 6).ocean
+  assert.equal(kept[0].color, '#112233')
+  assert.equal(kept[1].color, undefined)
+})
+
 test('seasons follow the calendar, sell their pieces only in season, and bring their own visitors', async () => {
   const { seasonOn, SEASONS } = await import('../src/state/seasons')
   const { checkPurchase: check, purchaseProblem: problem } = await import('../src/state/rules')
@@ -1222,7 +1269,7 @@ test('the Koi Pond opens at level 20, takes pond fish straight from the shop, an
 })
 
 test('fishing: a few casts a day, fair catches, and caught fish land somewhere with room', async () => {
-  const { castsLeft, CASTS_PER_DAY, rollCatch, reelDifficulty, markerAt, catchableFish } = await import('../src/state/fishing')
+  const { castsLeft, CASTS_PER_DAY, rollCatch, reelDifficulty, reelHits, markerAt, judgeReel, nextZoneStart, catchableFish, REEL_GRACE } = await import('../src/state/fishing')
   const { dayKey } = await import('../src/state/goals')
   const today = dayKey()
   assert.equal(castsLeft({ day: '2000-01-01', casts: 99 }, today), CASTS_PER_DAY)
@@ -1241,8 +1288,25 @@ test('fishing: a few casts a day, fair catches, and caught fish land somewhere w
   const easy = reelDifficulty({ kind: 'fish', defId: 'goldfish' })
   const hard = reelDifficulty({ kind: 'fish', defId: 'reef-shark' })
   assert.ok(hard.zone < easy.zone && hard.speed > easy.speed)
+  assert.ok(reelHits({ kind: 'fish', defId: 'reef-shark' }) > reelHits({ kind: 'coins', coins: 1, icon: '', name: '' }))
+  // The marker crosses at a steady speed and bounces back.
   assert.equal(markerAt(0, 1), 0)
+  assert.ok(Math.abs(markerAt(0.25, 1) - 0.5) < 1e-9)
   assert.ok(Math.abs(markerAt(0.5, 1) - 1) < 1e-9)
+  assert.ok(Math.abs(markerAt(0.75, 1) - 0.5) < 1e-9)
+  // Judging gives a little grace at the zone's edges, and the middle is perfect.
+  assert.equal(judgeReel(0.5, 0.4, 0.2), 'perfect')
+  assert.equal(judgeReel(0.41, 0.4, 0.2), 'hit')
+  assert.equal(judgeReel(0.4 - REEL_GRACE / 2, 0.4, 0.2), 'hit')
+  assert.equal(judgeReel(0.4 - REEL_GRACE * 2, 0.4, 0.2), 'miss')
+  assert.equal(judgeReel(0.9, 0.4, 0.2), 'miss')
+  // After a tap the zone jumps somewhere clear of the marker, inside the bar.
+  for (let i = 0; i < 200; i++) {
+    const marker = i / 199
+    const start = nextZoneStart(0.2, marker)
+    assert.ok(start >= 0 && start + 0.2 <= 1)
+    assert.ok(marker < start - 0.05 || marker > start + 0.25)
+  }
 
   // Landing a catch pays out, and a fish goes to the nursery when it has room.
   const coins = store.getState().currency

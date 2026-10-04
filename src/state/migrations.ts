@@ -275,10 +275,20 @@ function sanitizeGifts(raw: unknown): VisitorGift[] {
     .slice(-MAX_GIFTS)
 }
 
+const isHex = (value: unknown): value is string => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)
+
 function sanitizeOcean(raw: unknown): OceanFish[] {
   if (!Array.isArray(raw)) return []
   return (raw as OceanFish[])
     .filter((f) => f && typeof f.id === 'string' && typeof f.name === 'string' && getFishDef(f.defId) && Number.isFinite(f.at))
-    .map((f) => ({ id: f.id, defId: f.defId, name: f.name.slice(0, 18), at: f.at, ...(getMorph(f.morph) ? { morph: f.morph } : {}), ...(isPattern(f.pattern) ? { pattern: f.pattern } : {}) }))
+    .map((f) => ({
+      id: f.id,
+      defId: f.defId,
+      name: f.name.slice(0, 18),
+      at: f.at,
+      ...(getMorph(f.morph) ? { morph: f.morph } : {}),
+      ...(isPattern(f.pattern) ? { pattern: f.pattern } : {}),
+      ...(isHex(f.color) && isHex(f.color2) ? { color: f.color, color2: f.color2, ...(isHex(f.color3) ? { color3: f.color3 } : {}) } : {}),
+    }))
     .slice(-MAX_OCEAN_FISH)
 }

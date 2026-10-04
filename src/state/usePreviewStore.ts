@@ -14,6 +14,16 @@ export interface PreviewTarget {
   morph?: MorphId
   /** Fish only: render wearing this pattern. */
   pattern?: PatternType
+  /** Fish only: its own colours instead of its species' usual ones. */
+  palette?: FishPalette
+  /** Fish only: a side-on portrait (for creatures swimming across a scene) instead of the shop's three-quarter view. */
+  view?: 'side'
+}
+
+export interface FishPalette {
+  color: string
+  color2: string
+  color3?: string
 }
 
 /** Thumbnail key for a visitor. */
@@ -21,9 +31,11 @@ export function visitorPreviewKey(id: string): string {
   return `visitor~${id}`
 }
 
-/** Thumbnail key for a species, one of its morphs, or one of its patterns. */
-export function fishPreviewKey(defId: string, morph?: MorphId, pattern?: PatternType): string {
-  return `${defId}${morph ? `~${morph}` : ''}${pattern ? `~p-${pattern}` : ''}`
+/** Thumbnail key for a species, one of its morphs or patterns, or a fish in its own colours. */
+export function fishPreviewKey(defId: string, morph?: MorphId, pattern?: PatternType, palette?: FishPalette): string {
+  // A morph's colours cover the palette, so it doesn't change the picture.
+  const colours = palette && !morph ? `~c-${palette.color}${palette.color2}${palette.color3 ?? ''}`.replace(/#/g, '') : ''
+  return `${defId}${morph ? `~${morph}` : ''}${pattern ? `~p-${pattern}` : ''}${colours}`
 }
 
 function buildQueue(): PreviewTarget[] {
@@ -38,8 +50,8 @@ interface PreviewState {
   queue: PreviewTarget[]
   setImage: (key: string, dataUrl: string) => void
   advanceQueue: () => void
-  /** Queue extra thumbnails (e.g. morphs for the Fishpedia) unless already made or queued. */
-  requestPreviews: (targets: PreviewTarget[]) => void
+  /** Queue extra thumbnails (e.g. morphs for the Fishpedia) unless already made or queued; `first` puts them next in line. */
+  requestPreviews: (targets: PreviewTarget[], first?: boolean) => void
 }
 
 /**
@@ -53,10 +65,12 @@ export const usePreviewStore = create<PreviewState>()((set) => ({
   queue: buildQueue(),
   setImage: (key, dataUrl) => set((s) => ({ images: { ...s.images, [key]: dataUrl } })),
   advanceQueue: () => set((s) => ({ queue: s.queue.slice(1) })),
-  requestPreviews: (targets) =>
+  requestPreviews: (targets, first = false) =>
     set((s) => {
       const queued = new Set(s.queue.map((t) => t.key))
       const fresh = targets.filter((t) => !s.images[t.key] && !queued.has(t.key))
-      return fresh.length ? { queue: [...s.queue, ...fresh] } : s
+      if (!fresh.length) return s
+      // The head of the queue may be mid-capture, so jump in just behind it.
+      return { queue: first ? [...s.queue.slice(0, 1), ...fresh, ...s.queue.slice(1)] : [...s.queue, ...fresh] }
     }),
 }))

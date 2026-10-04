@@ -1,6 +1,7 @@
 import { useEffect, useRef, type CSSProperties } from 'react'
 import { useGameStore } from '../../state/useGameStore'
 import { useUIStore, type DockTab } from '../../state/useUIStore'
+import { ESCAPE_LAYER, useEscape } from '../escape'
 import { algaeCoverage } from '../../sim/algae'
 import { levelFromXp } from '../../state/progression'
 import { newShopCount } from '../../state/rules'
@@ -61,6 +62,7 @@ export function Dock() {
   const dragging = useUIStore((s) => s.draggingId !== null)
   const badges = useBadges()
   const open = trayOpen && !dragging
+  useEscape(() => setTrayOpen(false), ESCAPE_LAYER.drawer, open)
   const index = Math.max(0, TABS.findIndex((t) => t.id === dock))
   const active = TABS[index]
   const dockRef = useRef<HTMLDivElement>(null)

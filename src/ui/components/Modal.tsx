@@ -1,4 +1,5 @@
 import type { PropsWithChildren } from 'react'
+import { ESCAPE_LAYER, useEscape } from '../escape'
 
 export function Modal({
   title,
@@ -6,6 +7,7 @@ export function Modal({
   className,
   children,
 }: PropsWithChildren<{ title: string; onClose: () => void; className?: string }>) {
+  useEscape(onClose, ESCAPE_LAYER.modal)
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className={className ? `modal ${className}` : 'modal'} onClick={(e) => e.stopPropagation()}>

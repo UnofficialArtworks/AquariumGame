@@ -172,6 +172,27 @@ export const sfx = {
   magic() {
     ;[1047, 1319, 1568, 2093].forEach((f, i) => tone(f, 0.25, { type: 'sine', volume: 0.08, delay: i * 0.05 }))
   },
+  /** A fishing line whipping out over the water. */
+  cast() {
+    noise(0.32, { freq: 700, endFreq: 2600, q: 0.8, volume: 0.06 })
+  },
+  /** Something testing the bait. */
+  nibble() {
+    tone(820, 0.05, { endFreq: 520, volume: 0.07 })
+  },
+  /** The reel's ratchet, a little higher with each tap landed. */
+  reel(step = 0) {
+    for (let i = 0; i < 4; i++) tone(1500 + step * 180, 0.025, { type: 'square', volume: 0.035, delay: i * 0.035 })
+  },
+  /** The line pulled tight. */
+  twang() {
+    tone(150, 0.32, { type: 'sawtooth', endFreq: 95, volume: 0.05 })
+  },
+  /** A catch leaping out of the water. */
+  leap() {
+    noise(0.4, { freq: 1200, endFreq: 3200, q: 0.7, volume: 0.1 })
+    tone(420, 0.3, { endFreq: 1100, volume: 0.06, delay: 0.05 })
+  },
 }
 
 /** A soft filtered-noise hum. (Bubble blips play only when a bubble you can see pops: see sim/bubbles.ts.) */

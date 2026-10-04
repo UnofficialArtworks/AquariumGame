@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { usePreviewStore, type PreviewKind } from '../../state/usePreviewStore'
+import { usePreviewStore, type FishPalette, type PreviewKind } from '../../state/usePreviewStore'
 import { getDecorationDef } from '../decorations/decorationDefinitions'
 import { DecorationVisual } from '../decorations/DecorationVisual'
 import { getFishDef } from '../fish/fishDefinitions'
@@ -23,8 +23,21 @@ import { VisitorVisual } from '../visitors/VisitorVisual'
 
 const PREVIEW_PIXELS = 160
 const VIEW_DIRECTION = new THREE.Vector3(0.6, 0.55, 1).normalize()
+/** Side-on, nose to the right and a touch from the front, for creatures swimming across a scene. */
+const SIDE_VIEW = new THREE.Vector3(1, 0.3, -0.28).normalize()
+/** Rays are flat, so they're seen from higher up. */
+const SIDE_VIEW_FLAT = new THREE.Vector3(0.7, 1.3, -0.2).normalize()
 
-function TargetContent({ defId, kind, morph, pattern }: { defId: string; kind: PreviewKind; morph?: MorphId; pattern?: PatternType }) {
+interface TargetProps {
+  defId: string
+  kind: PreviewKind
+  morph?: MorphId
+  pattern?: PatternType
+  palette?: FishPalette
+  view?: 'side'
+}
+
+function TargetContent({ defId, kind, morph, pattern, palette }: TargetProps) {
   if (kind === 'visitor') {
     const visitor = getVisitor(defId)
     return visitor ? <VisitorVisual visitor={visitor} /> : null
@@ -32,7 +45,7 @@ function TargetContent({ defId, kind, morph, pattern }: { defId: string; kind: P
   if (kind === 'fish') {
     const species = getFishDef(defId)
     if (!species) return null
-    const def = morphedDefinition(pattern ? { ...species, pattern } : species, morph)
+    const def = morphedDefinition({ ...species, ...(palette ?? {}), ...(pattern ? { pattern } : {}) }, morph)
     if (def.kind === 'jellyfish') return <JellyfishVisual def={def} />
     if (def.kind === 'seahorse') return <SeahorseVisual def={def} />
     if (def.kind === 'axolotl') return <AxolotlVisual def={def} />
@@ -49,7 +62,7 @@ function TargetContent({ defId, kind, morph, pattern }: { defId: string; kind: P
 }
 
 /** Frame and capture a thumbnail with isolated lighting, then restore tank uniforms. */
-function CaptureRig({ defId, kind, morph, pattern, onCaptured }: { defId: string; kind: PreviewKind; morph?: MorphId; pattern?: PatternType; onCaptured: (dataUrl: string) => void }) {
+function CaptureRig({ onCaptured, ...target }: TargetProps & { onCaptured: (dataUrl: string) => void }) {
   const contentRef = useRef<THREE.Group>(null)
   const captured = useRef(false)
   const { gl, camera, scene } = useThree()
@@ -63,7 +76,8 @@ function CaptureRig({ defId, kind, morph, pattern, onCaptured }: { defId: string
     const sphere = box.getBoundingSphere(new THREE.Sphere())
     const persp = camera as THREE.PerspectiveCamera
     const distance = Math.max((sphere.radius / Math.sin((persp.fov * Math.PI) / 360)) * 1.45, 0.4)
-    camera.position.copy(sphere.center).addScaledVector(VIEW_DIRECTION, distance)
+    const view = target.view !== 'side' ? VIEW_DIRECTION : getFishDef(target.defId)?.kind === 'ray' ? SIDE_VIEW_FLAT : SIDE_VIEW
+    camera.position.copy(sphere.center).addScaledVector(view, distance)
     camera.lookAt(sphere.center)
     persp.updateProjectionMatrix()
     const density = aquaUniforms.uWaterDensity.value
@@ -85,7 +99,7 @@ function CaptureRig({ defId, kind, morph, pattern, onCaptured }: { defId: string
     onCaptured(dataUrl)
   }, 1)
 
-  return <group ref={contentRef}><TargetContent defId={defId} kind={kind} morph={morph} pattern={pattern} /></group>
+  return <group ref={contentRef}><TargetContent {...target} /></group>
 }
 
 function PreviewScene() {
@@ -106,6 +120,8 @@ function PreviewScene() {
         kind={current.kind}
         morph={current.morph}
         pattern={current.pattern}
+        palette={current.palette}
+        view={current.view}
         onCaptured={(dataUrl) => {
           setImage(current.key, dataUrl)
           advanceQueue()

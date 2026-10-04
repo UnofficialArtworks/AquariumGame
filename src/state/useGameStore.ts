@@ -53,7 +53,7 @@ import { beautyOf } from './beauty'
 import { STAND_CATALOG } from '../scene/stands/standDefinitions'
 import { discoveryRewards, recordFish } from './fishpedia'
 import { getToolDef } from '../scene/cleaning/toolDefinitions'
-import { canRelease, MAX_OCEAN_FISH, RELEASE_XP, tideFor, tideReward } from './ocean'
+import { canRelease, MAX_OCEAN_FISH, oceanLooks, RELEASE_XP, tideFor, tideReward } from './ocean'
 import { seasonOn } from './seasons'
 import {
   AWAY_VISIT_SECONDS,
@@ -452,9 +452,7 @@ export const useGameStore = create<GameStore>()(
           if (!fish || !def || !canRelease(s, fish)) return null
           const firstOfKind = !s.ocean.some((f) => f.defId === fish.defId)
           const tideBefore = tideFor(s.stats.released)
-          const morph = fish.inheritance?.morph
-          const pattern = fish.inheritance?.pattern
-          const ocean = [...s.ocean, { id: fish.id, defId: fish.defId, name: fish.name, at: Date.now(), ...(morph ? { morph } : {}), ...(pattern ? { pattern } : {}) }].slice(-MAX_OCEAN_FISH)
+          const ocean = [...s.ocean, { id: fish.id, defId: fish.defId, name: fish.name, at: Date.now(), ...oceanLooks(fish) }].slice(-MAX_OCEAN_FISH)
           // Same coins as selling, so letting go never costs anything.
           const coins = get().sellFish(fishId)
           set((g) => ({ ocean, stats: { ...g.stats, released: g.stats.released + 1 } }))

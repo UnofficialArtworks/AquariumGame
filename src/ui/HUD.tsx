@@ -9,7 +9,7 @@ import { firstNewShopCategory, friendshipReady, newHatchlings, transferProblem, 
 import { getMorph, speciesLabel } from '../state/morphs'
 import { getFoodDef } from '../scene/food/foodDefinitions'
 import { getDecorationDef } from '../scene/decorations/decorationDefinitions'
-import type { FishInstance, Habitat } from '../state/types'
+import type { FishDefinition, FishInstance, Habitat } from '../state/types'
 import { algaeCoverage } from '../sim/algae'
 import { savePhoto } from './photo'
 import { Button } from './components/Button'
@@ -23,6 +23,7 @@ import { beautyOf } from '../state/beauty'
 import { endVisit } from '../app/visit'
 import { Coin, CoinText, Glyph } from './Coin'
 import { Modal } from './components/Modal'
+import { ESCAPE_LAYER, useEscape } from './escape'
 import { Dock } from './dock/Dock'
 import { Fishpedia } from './Fishpedia'
 import { Goals } from './Goals'
@@ -375,6 +376,23 @@ function FishCharacter({ fish }: { fish: FishInstance }) {
   )
 }
 
+/**
+ * Where a hatchling's looks came from. A rare morph wears the morph's colours
+ * instead of its colour parent's, with its pattern drawn in them. Caught or
+ * shared fish have no parent names, so only the parts we know are listed.
+ */
+function familyLine(fish: FishInstance, species: FishDefinition, morphName: string | undefined): string {
+  const family = fish.inheritance
+  if (!family) return ''
+  const parts: string[] = []
+  if (family.bodyParentName) parts.push(`Shape from ${family.bodyParentName}`)
+  if (morphName) parts.push(`rare ${morphName} colours`)
+  else if (family.colorParentName) parts.push(`colours from ${family.colorParentName}`)
+  if (family.pattern && hasPatterns(species)) parts.push(`${patternName(family.pattern)} pattern`)
+  const line = parts.join(' · ')
+  return line.charAt(0).toUpperCase() + line.slice(1)
+}
+
 function FishInfoCard() {
   const selectedFishId = useUIStore((s) => s.selectedFishId)
   const selectFish = useUIStore((s) => s.selectFish)
@@ -391,11 +409,14 @@ function FishInfoCard() {
   const busy = useGameStore((s) => (selectedFishId ? s.nurserySession?.parentIds.includes(selectedFishId) ?? false : false))
   const [name, setName] = useState(fish?.name ?? '')
   const [confirmSell, setConfirmSell] = useState(false)
+  // Escape backs out of the goodbye question first, then closes the card.
+  useEscape(() => (confirmSell ? setConfirmSell(false) : selectFish(null)), ESCAPE_LAYER.card)
   if (!fish) return null
   const species = getFishDef(fish.defId)
   const def = inheritedDefinition(fish)
   if (!species || !def) return null
   const morph = getMorph(fish.inheritance?.morph)
+  const family = familyLine(fish, species, morph?.name)
   const hunger = vitals?.hunger ?? 0
   const growth = vitals?.growth ?? 0
   const targets = moveTargets(useGameStore.getState(), fish)
@@ -429,12 +450,7 @@ function FishInfoCard() {
           ✕
         </button>
       </div>
-      {fish.inheritance && (
-        <p className="pop-note">
-          🌈 Shape from {fish.inheritance.bodyParentName} · colours from {fish.inheritance.colorParentName}
-          {fish.inheritance.pattern && hasPatterns(species) ? ` · ${patternName(fish.inheritance.pattern)} pattern` : ''}
-        </p>
-      )}
+      {family && <p className="pop-note">🧬 {family}</p>}
       <p className="pop-desc">{def.description}</p>
       {fish.habitat === 'main' && crewJobFor(species) && <CrewJobLine fishId={fish.id} job={crewJobFor(species)!} />}
       {fish.habitat !== 'nursery' && hasPersonality(species) && <FishCharacter fish={fish} />}
