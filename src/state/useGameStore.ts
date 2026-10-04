@@ -20,17 +20,19 @@ import {
   OFFLINE_PASSIVE_PER_SECOND,
   PASSIVE_COINS_PER_SECOND,
   salePrice as calculateSalePrice,
-  NURSERY_CAPACITY,
 } from './economy'
+import { charmProblem, getCharm, type CharmId } from './charms'
+import { extraEggChance, nextTier, nurseryCapacity, nurseryGrowth, nurseryUpgradeProblem, type NurseryUpgradeId } from './nurseryUpgrades'
 import { levelFromXp, levelUpCoinReward, MAX_LEVEL } from './progression'
 import { pickFishName } from './names'
 import { useUIStore } from './useUIStore'
 import { DECORATION_CATALOG, getDecorationDef } from '../scene/decorations/decorationDefinitions'
-import { FISH_CATALOG, getFishDef, MAX_OWNED_FISH, sampleFishSize } from '../scene/fish/fishDefinitions'
+import { FISH_CATALOG, getFishDef, sampleFishSize } from '../scene/fish/fishDefinitions'
+import { aquariumCapacity } from './tankSizes'
 import { BACKGROUND_CATALOG } from '../scene/backgrounds'
 import { SUBSTRATE_CATALOG } from '../scene/substrates'
 import { FOOD_CATALOG, getFoodDef } from '../scene/food/foodDefinitions'
-import { clampToInterior } from '../scene/TankBounds'
+import { clampDecoration, clampToInterior, TANK_DEPTH, TANK_WIDTH } from '../scene/TankBounds'
 import { algaeCoverage } from '../sim/algae'
 import { progressNursery, sampleEggCount } from './nursery'
 import {
@@ -89,6 +91,10 @@ interface GameActions {
   setBackground: (id: string) => void
   setSubstrate: (id: string) => void
   buyStand: (id: string) => boolean
+  /** Move everything into a bigger tank. */
+  buyTankSize: (id: string) => boolean
+  /** Buy the next level of a nursery upgrade. */
+  buyNurseryUpgrade: (id: NurseryUpgradeId) => boolean
   setStand: (id: string) => void
   buyTool: (id: string) => boolean
   equipTool: (id: string) => void
@@ -99,7 +105,9 @@ interface GameActions {
   salePrice: (fishId: string) => number
   renameAquarium: (name: string) => void
   transferFish: (fishId: string, destination: Habitat) => boolean
-  startFriendship: (firstId: string, secondId: string) => boolean
+  /** Pair two grown nursery fish, optionally using up a lucky charm on their clutch. */
+  startFriendship: (firstId: string, secondId: string, charm?: CharmId) => boolean
+  buyCharm: (id: CharmId) => boolean
   renameFish: (fishId: string, name: string) => void
   addDecorationInstance: (defId: string) => void
   updateDecorationTransform: (id: string, position: [number, number, number], rotationY?: number) => void
@@ -348,7 +356,8 @@ export const useGameStore = create<GameStore>()(
           if (!v) return
           const food = getFoodDef(foodId)
           const fish = s.ownedFish.find((f) => f.id === fishId)
-          const lamp = fish?.habitat === 'main' ? bonusesFor(s.placedDecorations).growthRate : 1
+          const lamp = fish?.habitat === 'main' ? bonusesFor(s.placedDecorations).growthRate
+            : fish?.habitat === 'nursery' ? nurseryGrowth(s.nurseryUpgrades) : 1
           const growthBoost = (food.effect === 'growth' ? 0.25 : GROWTH_PER_MEAL) * lamp
           set({
             fishVitals: {
@@ -404,6 +413,31 @@ export const useGameStore = create<GameStore>()(
 
         setStand: (id) => {
           if (get().unlockedStandIds.includes(id)) set({ standId: id })
+        },
+
+        buyTankSize: (id) => {
+          const bought = purchase('tanks', id, () => ({ tankSizeId: id }))
+          // Nothing stays mid-drag or selected while everything moves house.
+          if (bought) useUIStore.getState().setSelectedDecorationId(null)
+          return bought
+        },
+
+        buyCharm: (id) => {
+          const s = get()
+          const charm = getCharm(id)
+          if (!charm || charmProblem(s, id)) return false
+          set({ currency: s.currency - charm.cost, charms: { ...s.charms, [id]: (s.charms[id] ?? 0) + 1 } })
+          get().grantXp(purchaseXp(charm.cost))
+          return true
+        },
+
+        buyNurseryUpgrade: (id) => {
+          const s = get()
+          const tier = nextTier(s.nurseryUpgrades, id)
+          if (!tier || nurseryUpgradeProblem(s, id)) return false
+          set({ currency: s.currency - tier.cost, nurseryUpgrades: { ...s.nurseryUpgrades, [id]: (s.nurseryUpgrades[id] ?? 0) + 1 } })
+          get().grantXp(purchaseXp(tier.cost))
+          return true
         },
 
         buyTool: (id) =>
@@ -485,12 +519,17 @@ export const useGameStore = create<GameStore>()(
           return true
         },
 
-        startFriendship: (firstId, secondId) => {
+        startFriendship: (firstId, secondId, charm) => {
           const s = get()
           if (friendshipProblem(s, firstId, secondId)) return false
+          const useCharm = charm && (s.charms[charm] ?? 0) > 0 ? charm : undefined
           const first = s.ownedFish.find((f) => f.id === firstId)!
+          // Nesting moss may add one more egg, if there's a spot for it.
+          const free = nurseryCapacity(s.nurseryUpgrades) - nurseryOccupancy(s)
+          const extra = Math.random() < extraEggChance(s.nurseryUpgrades) ? 1 : 0
           set({ nurserySession: { parentIds: [firstId, secondId], remainingSeconds: FRIENDSHIP_SECONDS,
-            eggCount: sampleEggCount(first.defId) } })
+            eggCount: Math.min(free, sampleEggCount(first.defId) + extra), ...(useCharm ? { charm: useCharm } : {}) },
+            ...(useCharm ? { charms: { ...s.charms, [useCharm]: s.charms[useCharm]! - 1 } } : {}) })
           get().noteStat('friendships')
           return true
         },
@@ -505,7 +544,7 @@ export const useGameStore = create<GameStore>()(
           const s = get()
           if (!s.unlockedDecorationDefIds.includes(defId)) return
           const def = getDecorationDef(defId)
-          const [x, z] = clampToInterior((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 1.6, def?.footprintRadius ?? 0.3)
+          const [x, z] = clampDecoration((Math.random() - 0.5) * TANK_WIDTH * 0.4, (Math.random() - 0.5) * TANK_DEPTH * 0.4, def?.footprintRadius ?? 0.3)
           const instance: DecorationInstance = { id: crypto.randomUUID(), defId, position: [x, 0, z], rotationY: Math.random() * Math.PI * 2 }
           set({ placedDecorations: [...s.placedDecorations, instance], stats: { ...s.stats, decorPlaced: s.stats.decorPlaced + 1 } })
           const before = beautyOf(s.placedDecorations).stars
@@ -734,8 +773,8 @@ export const useGameStore = create<GameStore>()(
           const pondOpen = levelFromXp(s.xp).level >= POND_LEVEL
           const room: Habitat | null =
             def.pond && pondOpen && pondCount(s.ownedFish) < POND_CAPACITY ? 'pond'
-            : nurseryOccupancy(s) < NURSERY_CAPACITY ? 'nursery'
-            : !def.pond && mainTankCount(s.ownedFish) < MAX_OWNED_FISH ? 'main'
+            : nurseryOccupancy(s) < nurseryCapacity(s.nurseryUpgrades) ? 'nursery'
+            : !def.pond && mainTankCount(s.ownedFish) < aquariumCapacity(s.tankSizeId) ? 'main'
             : null
           if (!room) {
             const coins = Math.round(def.cost * 0.4)

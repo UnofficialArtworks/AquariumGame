@@ -7,10 +7,13 @@ A cozy 3D aquarium you can play right in your browser. Fill a tank with fish, de
 ## What you can do
 
 - **Collect fish and sea creatures.** Start with a few friendly fish and work your way up to seahorses, jellyfish, a sea turtle, an octopus and a few legendary surprises.
-- **Decorate.** Place plants, corals, castles, shipwrecks and more anywhere in the tank, then choose the scene behind it, the gravel and the stand it sits on. Some decorations are gadgets with handy perks, like an auto-feeder.
+- **Decorate.** Place plants, corals, castles, shipwrecks and more anywhere in the tank, right up to the glass, then choose the scene behind it, the gravel and the stand it sits on. Some decorations are gadgets with handy perks, like an auto-feeder.
+- **Move into a bigger tank.** Save up for the Roomy, Grand and Panorama tanks for lots more room to decorate and space for a few more fish.
 - **Feed your fish.** Sprinkle food and watch them swim over to eat. Hungry fish get first bite. Special treats make fish sparkle, glow, or zoom around.
 - **Keep the tank clean.** Scrub algae off the glass, vacuum the gravel and change the water. Better cleaning tools unlock as you go. Your snails, shrimp and pleco have cleaning jobs of their own, and later on, helper gadgets can tidy up for you.
 - **Raise baby fish.** Two grown fish can become friends in the nursery and welcome a clutch of eggs. Babies take their shape from one parent, their colors from the other and a pattern from either. Two parents with the same pattern can surprise you with a brand-new one, and once in a while a rare color appears.
+- **Upgrade the nursery.** Spend your coins on more room, an egg warmer that speeds up friendships and hatching, baby food that helps little fish grow faster, and nesting moss for a chance of an extra egg.
+- **Try a lucky charm.** A clover, a pattern shell or a moon pearl gives one friendship's eggs a small nudge toward rare colors and surprise patterns. Rare finds are still rare, just a little less so.
 - **Welcome visitors.** Special guests like a Treasure Crab, a Hermit Crab or a Leafy Sea Dragon drop by when your tank has something they love. They stay a little while and leave a gift. The Fishpedia gives a hint for each one, so you can work out how to meet them all.
 - **Open the Koi Pond.** At level 20 a third tank opens: a calm pond with its own pond fish, like the Butterfly Koi, that stays sparkling clean.
 - **Go fishing.** A few casts a day at a garden pond. Wait for the big splash, then reel your catch in with well-timed taps (bigger fish fight harder). You might land coins, treats, or a brand-new fish, now and then in a rare colour.
@@ -25,7 +28,9 @@ Your aquarium keeps swimming while you're away, and your progress saves automati
 
 ## Tips
 
-- Drag to look around the tank, and pinch or scroll to zoom.
+- Drag to look around the tank, and pinch or scroll to zoom. With a tool or food in hand, use two fingers (or right-drag with a mouse) to turn the camera.
+- On a touch screen, drag the round camera button above the menu to look around, and tap it to go back to the starting view.
+- Press Escape to close whatever is open.
 - Tap a fish to meet it, rename it, or follow it around.
 - On iPad or iPhone, open the game in Safari, tap **Share → Add to Home Screen**, and launch it from the icon to play full screen.
 

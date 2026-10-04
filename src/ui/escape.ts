@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react'
 
-// Escape closes whatever is on top: relax mode, then a pop-up, then the fish
-// card, then an open drawer. Each window registers with a layer; the highest
-// layer closes first (and within a layer, the newest).
+// Escape closes whatever is on top: a decoration being carried (it goes
+// back), relax mode, then a pop-up, then the fish card, then an open drawer.
+// Each window registers with a layer; the highest layer closes first (and
+// within a layer, the newest).
 
-export const ESCAPE_LAYER = { drawer: 1, card: 2, modal: 3, relax: 4 } as const
+export const ESCAPE_LAYER = { drawer: 1, card: 2, modal: 3, relax: 4, drag: 5 } as const
 
 interface Entry {
   layer: number

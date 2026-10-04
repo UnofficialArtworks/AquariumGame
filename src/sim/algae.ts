@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { PERIMETER, TANK_BOTTOM_Y, TANK_HEIGHT, WATER_LINE_Y } from '../scene/TankBounds'
+import { onTankResize, PERIMETER, TANK_BOTTOM_Y, TANK_HEIGHT, WATER_LINE_Y } from '../scene/TankBounds'
 import { fbm3 } from '../utils/noise'
 
 /**
@@ -10,41 +10,67 @@ import { fbm3 } from '../utils/noise'
  */
 
 export const ALGAE_RES = 6
-export const ALGAE_COLS = Math.round(PERIMETER * ALGAE_RES)
 export const ALGAE_HEIGHT = TANK_HEIGHT - TANK_BOTTOM_Y
 export const ALGAE_ROWS = Math.ceil(ALGAE_HEIGHT * ALGAE_RES)
+const MAX_ROW = Math.floor((WATER_LINE_Y + 0.05 - TANK_BOTTOM_Y) * ALGAE_RES)
 
-const CELLS = ALGAE_COLS * ALGAE_ROWS
-const grid = new Float32Array(CELLS)
-const weight = new Float32Array(CELLS)
-const texData = new Uint8Array(CELLS)
-
-export const algaeTexture = new THREE.DataTexture(texData, ALGAE_COLS, ALGAE_ROWS, THREE.RedFormat, THREE.UnsignedByteType)
-algaeTexture.magFilter = THREE.LinearFilter
-algaeTexture.minFilter = THREE.LinearFilter
-algaeTexture.wrapS = THREE.RepeatWrapping
-algaeTexture.wrapT = THREE.ClampToEdgeWrapping
-algaeTexture.needsUpdate = true
+// The grid wraps the whole glass perimeter, so it's rebuilt when the tank grows.
+export let ALGAE_COLS = Math.round(PERIMETER * ALGAE_RES)
+let CELLS = ALGAE_COLS * ALGAE_ROWS
+let grid = new Float32Array(CELLS)
+let weight = new Float32Array(CELLS)
+let texData = new Uint8Array(CELLS)
+export let algaeTexture = makeTexture()
 
 let dirty = true
 let coverageCache = 0
 
-const MAX_ROW = Math.floor((WATER_LINE_Y + 0.05 - TANK_BOTTOM_Y) * ALGAE_RES)
+function makeTexture() {
+  const texture = new THREE.DataTexture(texData, ALGAE_COLS, ALGAE_ROWS, THREE.RedFormat, THREE.UnsignedByteType)
+  texture.magFilter = THREE.LinearFilter
+  texture.minFilter = THREE.LinearFilter
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.ClampToEdgeWrapping
+  texture.needsUpdate = true
+  return texture
+}
 
 // Some patches of glass grow algae much faster than others, more near the
 // gravel and in a band along the waterline — like a real neglected tank.
-for (let row = 0; row < ALGAE_ROWS; row++) {
-  const y = TANK_BOTTOM_Y + (row + 0.5) / ALGAE_RES
-  for (let col = 0; col < ALGAE_COLS; col++) {
-    const s = (col + 0.5) / ALGAE_RES
-    const angle = (s / PERIMETER) * Math.PI * 2
-    // Sample noise on a cylinder so the pattern wraps seamlessly around the corners.
-    const n = fbm3(Math.cos(angle) * 3.2, y * 0.55, Math.sin(angle) * 3.2, 4)
-    const bottom = Math.max(0, 1 - (y - TANK_BOTTOM_Y) / 2.2) * 0.35
-    const waterline = Math.exp(-Math.pow((y - (WATER_LINE_Y - 0.25)) * 3, 2)) * 0.3
-    weight[row * ALGAE_COLS + col] = row > MAX_ROW ? 0 : Math.max(0.04, Math.min(1.3, 0.35 + n * 1.5 + bottom + waterline))
+function buildWeights() {
+  for (let row = 0; row < ALGAE_ROWS; row++) {
+    const y = TANK_BOTTOM_Y + (row + 0.5) / ALGAE_RES
+    for (let col = 0; col < ALGAE_COLS; col++) {
+      const s = (col + 0.5) / ALGAE_RES
+      const angle = (s / PERIMETER) * Math.PI * 2
+      // Sample noise on a cylinder so the pattern wraps seamlessly around the corners.
+      const n = fbm3(Math.cos(angle) * 3.2, y * 0.55, Math.sin(angle) * 3.2, 4)
+      const bottom = Math.max(0, 1 - (y - TANK_BOTTOM_Y) / 2.2) * 0.35
+      const waterline = Math.exp(-Math.pow((y - (WATER_LINE_Y - 0.25)) * 3, 2)) * 0.3
+      weight[row * ALGAE_COLS + col] = row > MAX_ROW ? 0 : Math.max(0.04, Math.min(1.3, 0.35 + n * 1.5 + bottom + waterline))
+    }
   }
 }
+buildWeights()
+
+// A bigger tank keeps its algae: the old grid is stretched around the new glass.
+onTankResize(() => {
+  const oldGrid = grid
+  const oldCols = ALGAE_COLS
+  ALGAE_COLS = Math.round(PERIMETER * ALGAE_RES)
+  CELLS = ALGAE_COLS * ALGAE_ROWS
+  grid = new Float32Array(CELLS)
+  weight = new Float32Array(CELLS)
+  texData = new Uint8Array(CELLS)
+  for (let row = 0; row < ALGAE_ROWS; row++) {
+    for (let col = 0; col < ALGAE_COLS; col++) grid[row * ALGAE_COLS + col] = oldGrid[row * oldCols + Math.floor((col * oldCols) / ALGAE_COLS)]
+  }
+  buildWeights()
+  algaeTexture.dispose()
+  algaeTexture = makeTexture()
+  dirty = true
+  recomputeCoverage()
+})
 
 function recomputeCoverage() {
   let sum = 0

@@ -1,4 +1,5 @@
 import type { FishDefinition, MorphId } from './types'
+import type { Luck } from './charms'
 
 /**
  * Rare colour morphs. Any species can hatch as one, keeping its own body,
@@ -26,6 +27,8 @@ export const MORPHS: MorphDefinition[] = [
 ]
 
 const BASE_CHANCE = MORPHS.reduce((sum, m) => sum + m.chance, 0)
+/** The two hardest colours to find. */
+const RAREST = new Set<MorphId>(['midnight', 'aurora'])
 /** A morph parent makes rare eggs this much more likely. */
 const PARENT_BOOST = 2.5
 /** When a morph parent's egg comes out rare, how often it is the parent's own morph. */
@@ -36,14 +39,16 @@ export function getMorph(id: string | undefined): MorphDefinition | undefined {
 }
 
 /** Roll whether an egg hatches as a rare morph. */
-export function rollMorph(parentMorphs: Array<MorphId | undefined>, random: () => number = Math.random): MorphId | undefined {
+export function rollMorph(parentMorphs: Array<MorphId | undefined>, random: () => number = Math.random, luck: Luck = {}): MorphId | undefined {
   const inherited = parentMorphs.filter((m): m is MorphId => Boolean(getMorph(m)))
-  const chance = BASE_CHANCE * (inherited.length > 0 ? PARENT_BOOST : 1)
+  const chance = BASE_CHANCE * (inherited.length > 0 ? PARENT_BOOST : 1) * (luck.morphChance ?? 1)
   if (random() >= chance) return undefined
   if (inherited.length > 0 && random() < FOLLOW_PARENT) return inherited[Math.floor(random() * inherited.length)]
-  let pick = random() * BASE_CHANCE
+  // A moon pearl tilts the pick toward the rarest colours.
+  const weight = (m: MorphDefinition) => m.chance * (RAREST.has(m.id) ? luck.rareTilt ?? 1 : 1)
+  let pick = random() * MORPHS.reduce((sum, m) => sum + weight(m), 0)
   for (const m of MORPHS) {
-    pick -= m.chance
+    pick -= weight(m)
     if (pick < 0) return m.id
   }
   return MORPHS[0].id

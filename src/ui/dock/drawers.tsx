@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react'
 import { useGameStore } from '../../state/useGameStore'
 import { useUIStore, type ShopTab } from '../../state/useUIStore'
 import { levelFromXp } from '../../state/progression'
-import { getFishDef, FISH_CATALOG, MAX_OWNED_FISH } from '../../scene/fish/fishDefinitions'
+import { getFishDef, FISH_CATALOG } from '../../scene/fish/fishDefinitions'
+import { aquariumCapacity, TANK_SIZES, tankSizeIndex } from '../../state/tankSizes'
 import { speciesLabel } from '../../state/morphs'
 import { FOOD_CATALOG, getFoodDef } from '../../scene/food/foodDefinitions'
 import { DECORATION_CATALOG, getDecorationDef } from '../../scene/decorations/decorationDefinitions'
@@ -15,7 +16,10 @@ import { STAND_CATALOG } from '../../scene/stands/standDefinitions'
 import { getGlassTool, getGravelTool, TOOL_CATALOG, type CleaningToolDef } from '../../scene/cleaning/toolDefinitions'
 import { algaeCoverage } from '../../sim/algae'
 import { startWaterChange, waterChange } from '../../sim/waterChange'
-import { FRIENDSHIP_SECONDS, NURSERY_CAPACITY } from '../../state/economy'
+import { FRIENDSHIP_SECONDS } from '../../state/economy'
+import { NURSERY_UPGRADES, nextTier, nurseryCapacity, nurserySpeed, nurseryUpgradeProblem, upgradeLevel } from '../../state/nurseryUpgrades'
+import { sfx } from '../../audio/sfx'
+import { CHARMS, charmProblem, getCharm, MAX_CHARMS, type CharmId } from '../../state/charms'
 import { getEggCountRange, inheritedDefinition } from '../../state/nursery'
 import { checkPurchase, friendshipProblem, isNewInShop, mainTankCount, newShopItems, nurseryOccupancy, purchaseProblem, transferProblem, type PurchaseState, type ShopCategory, quickMove, tankName, TANK_LABELS, POND_CAPACITY } from '../../state/rules'
 import { ShopItemCard } from '../ShopItemCard'
@@ -140,14 +144,22 @@ function NurseryContent() {
   const eggs = useGameStore((s) => s.nurseryEggs)
   const vitals = useGameStore((s) => s.fishVitals)
   const session = useGameStore((s) => s.nurserySession)
+  const upgrades = useGameStore((s) => s.nurseryUpgrades)
+  const charms = useGameStore((s) => s.charms)
+  const [charm, setCharm] = useState<CharmId | ''>('')
+  const carried = CHARMS.filter((c) => (charms[c.id] ?? 0) > 0)
+  const sessionCharm = getCharm(session?.charm)
   const startFriendship = useGameStore((s) => s.startFriendship)
   const pushToast = useUIStore((s) => s.pushToast)
   const [first, setFirst] = useState('')
   const [second, setSecond] = useState('')
   const nurseryFish = fish.filter((f) => f.habitat === 'nursery')
   const grown = nurseryFish.filter((f) => (vitals[f.id]?.growth ?? 0) >= 1)
-  const tanks = { ownedFish: fish, fishVitals: vitals, nurseryEggs: eggs, nurserySession: session }
+  const tanks = { ownedFish: fish, fishVitals: vitals, nurseryEggs: eggs, nurserySession: session, nurseryUpgrades: upgrades }
   const occupied = nurseryOccupancy(tanks)
+  const capacity = nurseryCapacity(upgrades)
+  // Countdowns are in nursery time, which an egg warmer speeds up.
+  const speed = nurserySpeed(upgrades)
   const firstFriend = grown.find((f) => f.id === first)
   const clutch = firstFriend ? getEggCountRange(firstFriend.defId) : undefined
   const problem = first && second ? friendshipProblem(tanks, first, second) : null
@@ -157,21 +169,22 @@ function NurseryContent() {
     <>
       <DrawerHead title="Friendship nursery" hint="Two grown fish can become friends and welcome a clutch of eggs.">
         <span className="chip" title={`${nurseryFish.length} fish, ${eggs.length} eggs, ${session?.eggCount ?? 0} reserved`}>
-          🫧 {occupied}/{NURSERY_CAPACITY}
+          🫧 {occupied}/{capacity}
         </span>
       </DrawerHead>
       <div className="nursery-columns">
         <section className="card-block">
           {session ? (
             <div className="friendship-live">
-              <div className="friendship-hearts">💗 🥚 💗</div>
+              <div className="friendship-hearts">💗 {sessionCharm?.icon ?? '🥚'} 💗</div>
               <strong>
                 {nameOf(session.parentIds[0]) ?? 'One friend'} and {nameOf(session.parentIds[1]) ?? 'another friend'} are becoming friends!
               </strong>
               <p>
-                {session.eggCount} egg{session.eggCount === 1 ? '' : 's'} on the way · {countdown(session.remainingSeconds)}
+                {session.eggCount} egg{session.eggCount === 1 ? '' : 's'} on the way · {countdown(session.remainingSeconds / speed)}
               </p>
               <Bar value={1 - session.remainingSeconds / FRIENDSHIP_SECONDS} />
+              {sessionCharm && <p className="fine-print">{sessionCharm.icon} {sessionCharm.name}: {sessionCharm.description}</p>}
             </div>
           ) : (
             <div className="friendship-form">
@@ -199,21 +212,39 @@ function NurseryContent() {
               </div>
               <p className="fine-print">
                 {clutch
-                  ? `This pair may welcome ${clutch[0]}–${clutch[1]} eggs in ${FRIENDSHIP_SECONDS / 60} minutes.`
+                  ? `This pair may welcome ${clutch[0]}–${clutch[1]} eggs in ${countdown(FRIENDSHIP_SECONDS / speed)}.`
                   : grown.length < 2
                     ? 'Feed your fish to help them grow — two fully grown fish are needed.'
                     : 'The first friend decides how many eggs (1–6). Babies get shape and colours from their parents.'}
-                {occupied >= NURSERY_CAPACITY && ' The nursery is full.'}
+                {occupied >= capacity && ' The nursery is full.'}
               </p>
+              {carried.length > 0 && (
+                <div className="charm-picks" role="group" aria-label="Use a lucky charm">
+                  {carried.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`charm-pick ${charm === c.id ? 'is-on' : ''}`}
+                      aria-pressed={charm === c.id}
+                      title={c.description}
+                      onClick={() => setCharm(charm === c.id ? '' : c.id)}
+                    >
+                      {c.icon} {c.name} <span>×{charms[c.id]}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {problem && <p className="fine-print is-warn">{problem}</p>}
               <Button
                 variant="primary"
                 disabled={!ready}
                 onClick={() => {
-                  if (startFriendship(first, second)) {
+                  const used = charm && (charms[charm] ?? 0) > 0 ? getCharm(charm) : undefined
+                  if (startFriendship(first, second, used?.id)) {
                     setFirst('')
                     setSecond('')
-                    pushToast('A new friendship is blooming!', 'success', '💗')
+                    setCharm('')
+                    pushToast(used ? `A new friendship is blooming, with a ${used.name}!` : 'A new friendship is blooming!', 'success', used?.icon ?? '💗')
                   } else pushToast(friendshipProblem(useGameStore.getState(), first, second) ?? 'These fish are not ready yet.', 'warn')
                 }}
               >
@@ -236,7 +267,7 @@ function NurseryContent() {
                     <div>
                       <div className="egg-line">
                         <strong>{species?.name ?? 'Mystery'} egg</strong>
-                        <span>{countdown(egg.remainingSeconds)}</span>
+                        <span>{countdown(egg.remainingSeconds / speed)}</span>
                       </div>
                       <Bar value={1 - egg.remainingSeconds / egg.hatchSeconds} />
                     </div>
@@ -251,6 +282,134 @@ function NurseryContent() {
       </div>
       <h3 className="section-label">Little fish</h3>
       <FishGrid habitat="nursery" />
+      <LuckyCharms />
+      <NurseryUpgrades />
+    </>
+  )
+}
+
+/** Charms that nudge one clutch's odds, bought here and used when pairing. */
+function LuckyCharms() {
+  const bag = useGameStore((s) => s.charms)
+  const coins = useGameStore((s) => s.currency)
+  const level = useGameStore((s) => levelFromXp(s.xp).level)
+  const buy = useGameStore((s) => s.buyCharm)
+  const pushToast = useUIStore((s) => s.pushToast)
+  return (
+    <>
+      <h3 className="section-label">Lucky charms</h3>
+      <p className="fine-print charm-note">Pick one when pairing two friends. Each charm helps one clutch, then it's used up. Rare finds stay rare, just a little less so!</p>
+      <div className="upgrade-grid">
+        {CHARMS.map((c) => {
+          const have = bag[c.id] ?? 0
+          const locked = level < c.unlockLevel
+          const full = have >= MAX_CHARMS
+          const short = coins < c.cost
+          return (
+            <div className="upgrade-card" key={c.id}>
+              <span className="upgrade-icon" aria-hidden>{c.icon}</span>
+              <div className="upgrade-body">
+                <div className="upgrade-name">
+                  <strong>{c.name}</strong>
+                  <span className="chip chip-soft">{have}/{MAX_CHARMS}</span>
+                </div>
+                <p>{c.description}</p>
+              </div>
+              <Button
+                className={`upgrade-buy ${locked ? 'is-locked' : short || full ? 'is-short' : ''}`}
+                variant={locked || short || full ? 'secondary' : 'primary'}
+                aria-disabled={locked || short || full}
+                onClick={() => {
+                  const problem = charmProblem(useGameStore.getState(), c.id)
+                  if (problem || !buy(c.id)) {
+                    pushToast(problem ?? 'That charm is not ready yet.', 'warn')
+                    return
+                  }
+                  sfx.buy()
+                  pushToast(`You got a ${c.name}! Use it when pairing two friends.`, 'success', c.icon)
+                }}
+              >
+                {locked ? `🔒 Level ${c.unlockLevel}` : (
+                  <>
+                    <Coin /> {c.cost.toLocaleString()}
+                  </>
+                )}
+              </Button>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
+/** Levels the nursery can be upgraded through, bought one at a time. */
+function NurseryUpgrades() {
+  const levels = useGameStore((s) => s.nurseryUpgrades)
+  const coins = useGameStore((s) => s.currency)
+  const level = useGameStore((s) => levelFromXp(s.xp).level)
+  const buy = useGameStore((s) => s.buyNurseryUpgrade)
+  const pushToast = useUIStore((s) => s.pushToast)
+  return (
+    <>
+      <h3 className="section-label">Nursery upgrades</h3>
+      <div className="upgrade-grid">
+        {NURSERY_UPGRADES.map((upgrade) => {
+          const owned = upgradeLevel(levels, upgrade.id)
+          const tier = nextTier(levels, upgrade.id)
+          const locked = Boolean(tier && level < tier.unlockLevel)
+          const short = Boolean(tier && coins < tier.cost)
+          return (
+            <div className={`upgrade-card ${tier ? '' : 'is-maxed'}`} key={upgrade.id}>
+              <span className="upgrade-icon" aria-hidden>{upgrade.icon}</span>
+              <div className="upgrade-body">
+                <div className="upgrade-name">
+                  <strong>{upgrade.name}</strong>
+                  <span className="upgrade-pips" role="img" aria-label={`Level ${owned} of ${upgrade.tiers.length}`}>
+                    {upgrade.tiers.map((_, i) => (
+                      <i key={i} className={i < owned ? 'is-on' : ''} />
+                    ))}
+                  </span>
+                </div>
+                <p>{upgrade.blurb}</p>
+                <p className="upgrade-effect">
+                  {upgrade.effect(owned)}
+                  {tier && (
+                    <>
+                      {' → '}
+                      <b>{upgrade.effect(owned + 1)}</b>
+                    </>
+                  )}
+                </p>
+              </div>
+              {tier ? (
+                <Button
+                  className={`upgrade-buy ${locked ? 'is-locked' : short ? 'is-short' : ''}`}
+                  variant={locked || short ? 'secondary' : 'primary'}
+                  aria-disabled={locked || short}
+                  onClick={() => {
+                    const problem = nurseryUpgradeProblem(useGameStore.getState(), upgrade.id)
+                    if (problem || !buy(upgrade.id)) {
+                      pushToast(problem ?? 'That upgrade is not ready yet.', 'warn')
+                      return
+                    }
+                    sfx.buy()
+                    pushToast(`${upgrade.name}: ${upgrade.effect(owned + 1)}!`, 'success', upgrade.icon)
+                  }}
+                >
+                  {locked ? `🔒 Level ${tier.unlockLevel}` : (
+                    <>
+                      <Coin /> {tier.cost.toLocaleString()}
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <span className="chip chip-soft upgrade-done">✨ Maxed</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </>
   )
 }
@@ -557,6 +716,7 @@ const SHOP_TABS: Array<{ id: ShopTab; icon: string; name: string; note: string }
   { id: 'backgrounds', icon: '🌅', name: 'Scenes', note: 'Set the scene behind your main aquarium.' },
   { id: 'gravel', icon: '🪨', name: 'Gravel', note: 'Change the look of the tank floor.' },
   { id: 'stands', icon: '🗄️', name: 'Stands', note: 'Give your aquarium a new stand to sit on.' },
+  { id: 'tanks', icon: '🪟', name: 'Tanks', note: 'Move into a bigger tank: lots more room for decorations, and space for a few more fish.' },
 ]
 
 function sortShopItems<T extends { unlockLevel: number }>(items: readonly T[], price: (item: T) => number): T[] {
@@ -589,8 +749,9 @@ export function ShopDrawer() {
   const ownedToolIds = useGameStore((s) => s.ownedToolIds)
   const equippedGlassTool = useGameStore((s) => s.equippedGlassTool)
   const equippedGravelTool = useGameStore((s) => s.equippedGravelTool)
+  const tankSizeId = useGameStore((s) => s.tankSizeId)
   const tab = SHOP_TABS.find((t) => t.id === shopTab) ?? SHOP_TABS[0]
-  const buyState: PurchaseState = { xp, currency: coins, ownedFish, unlockedDecorationDefIds, unlockedBackgroundIds, unlockedSubstrateIds, unlockedStandIds, ownedToolIds }
+  const buyState: PurchaseState = { xp, currency: coins, ownedFish, unlockedDecorationDefIds, unlockedBackgroundIds, unlockedSubstrateIds, unlockedStandIds, ownedToolIds, tankSizeId }
 
   // Things unlocked since the last visit wear a "New" tag for this whole
   // visit, even though opening the shop marks them as seen straight away.
@@ -619,7 +780,7 @@ export function ShopDrawer() {
 
   return (
     <>
-      <DrawerHead title="Shop" hint={shopTab === 'fish' ? `${tab.note} ${mainTankCount(ownedFish)}/${MAX_OWNED_FISH} in your aquarium.` : tab.note}>
+      <DrawerHead title="Shop" hint={shopTab === 'fish' ? `${tab.note} ${mainTankCount(ownedFish)}/${aquariumCapacity(tankSizeId)} in your aquarium.` : tab.note}>
         <span className="chip chip-coins"><Coin /> {coins.toLocaleString()}</span>
       </DrawerHead>
       <div className="subtabs" role="tablist" aria-label="Shop categories">
@@ -778,6 +939,25 @@ export function ShopDrawer() {
                 if (g.buyStand(def.id)) pushToast(`${def.name} installed!`, 'success', def.icon)
               }}
               onEquip={() => g.setStand(def.id)}
+            />
+          ))}
+        {shopTab === 'tanks' &&
+          TANK_SIZES.map((def, index) => (
+            <ShopItemCard
+              key={def.id}
+              name={def.name}
+              description={def.description}
+              color="#2a8f9a"
+              swatch={['#1d7fa6', '#0b3a57']}
+              icon={def.icon}
+              cost={def.cost}
+              badge={`${def.width} × ${def.depth} · holds ${aquariumCapacity(def.id)} fish`}
+              owned={tankSizeIndex(tankSizeId) >= index}
+              equipped={def.id === tankSizeId}
+              {...card('tanks', def.id, def.name, def.unlockLevel)}
+              onBuy={() => {
+                if (g.buyTankSize(def.id)) pushToast(`Welcome to your ${def.name}! Everyone has more room to swim.`, 'reward', '🎉')
+              }}
             />
           ))}
       </div>

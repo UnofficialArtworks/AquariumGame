@@ -3,6 +3,7 @@
 // chance of a surprise, a pattern neither of them has. Every species can
 // wear all nine, and the Fishpedia shows which ones you've found.
 import type { FishDefinition, FishInstance, PatternType } from './types'
+import type { Luck } from './charms'
 import { getFishDef } from '../scene/fish/fishDefinitions'
 
 export const PATTERNS: Array<{ id: PatternType; name: string }> = [
@@ -41,10 +42,12 @@ export function patternOf(fish: Pick<FishInstance, 'defId' | 'inheritance'>): Pa
 }
 
 /** A baby's pattern: one parent's or the other's, and sometimes a surprise when they match. */
-export function rollPattern(a: PatternType, b: PatternType, rand: () => number = Math.random): PatternType {
-  if (a === b && rand() < SURPRISE_CHANCE) {
-    const others = PATTERNS.filter((p) => p.id !== a)
-    return others[Math.floor(rand() * others.length)].id
+export function rollPattern(a: PatternType, b: PatternType, rand: () => number = Math.random, luck: Luck = {}): PatternType {
+  // A pattern shell raises the surprise chance, and allows one from parents that differ.
+  const surprise = a === b ? luck.matchSurprise ?? SURPRISE_CHANCE : luck.mismatchSurprise ?? 0
+  if (surprise > 0 && rand() < surprise) {
+    const others = PATTERNS.filter((p) => p.id !== a && p.id !== b)
+    if (others.length) return others[Math.floor(rand() * others.length)].id
   }
   return rand() < 0.5 ? a : b
 }

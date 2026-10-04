@@ -25,14 +25,30 @@ const IDLE_SECONDS = 40
 function fitDistance(aspect: number): number {
   const v = THREE.MathUtils.degToRad(FOV) / 2
   const h = Math.atan(Math.tan(v) * aspect)
-  // Portrait phones can crop the tank's ends a little; landscape fits it all.
-  const fitWidth = aspect < 1 ? TANK_WIDTH * 0.82 : TANK_WIDTH + 1.2
+  // Portrait phones can crop the tank's ends a little (more for the big tanks,
+  // so the fish don't shrink away); landscape fits it all.
+  const fitWidth = aspect < 1 ? Math.min(TANK_WIDTH, 9) * 0.82 : TANK_WIDTH + 1.2
   const byWidth = fitWidth / 2 / Math.tan(h)
   const byHeight = (TANK_HEIGHT + 1.6) / 2 / Math.tan(v)
   return Math.max(byWidth, byHeight) + 2
 }
 
-export const cameraBridge: { controls: OrbitControlsImpl | null } = { controls: null }
+/**
+ * The camera, for things outside the 3D scene: the on-screen camera pad turns
+ * it and sends it home, and two-finger gestures turn and zoom it in any mode.
+ */
+export const cameraBridge: {
+  controls: OrbitControlsImpl | null
+  /** Turn around the tank by these angles (radians), within the usual limits. */
+  orbit: (dAzimuth: number, dPolar: number) => void
+  /** Move closer (factor < 1) or further away (factor > 1). */
+  zoom: (factor: number) => void
+  /** Glide back to the starting view. */
+  home: () => void
+} = { controls: null, orbit: () => {}, zoom: () => {}, home: () => {} }
+
+const spherical = new THREE.Spherical()
+const offset = new THREE.Vector3()
 
 export function CameraRig() {
   const controlsRef = useRef<OrbitControlsImpl>(null)
@@ -43,6 +59,7 @@ export function CameraRig() {
   const toolInHand = useUIStore((s) => s.mode === 'clean' && !s.cleanCameraMode)
   const size = useThree((s) => s.size)
   const camera = useThree((s) => s.camera)
+  const gl = useThree((s) => s.gl)
   const home = useMemo(() => fitDistance(size.width / Math.max(1, size.height)), [size.width, size.height])
   const intro = useRef(0)
   const lastInput = useRef(performance.now())
@@ -57,6 +74,38 @@ export function CameraRig() {
 
   useEffect(() => {
     cameraBridge.controls = controlsRef.current
+    // Turning and zooming move the camera directly (OrbitControls' own setters
+    // ease toward a goal, which would lag behind a finger).
+    cameraBridge.orbit = (dAzimuth, dPolar) => {
+      const controls = controlsRef.current
+      if (!controls) return
+      offset.copy(camera.position).sub(controls.target)
+      spherical.setFromVector3(offset)
+      spherical.theta = THREE.MathUtils.clamp(spherical.theta + dAzimuth, controls.minAzimuthAngle, controls.maxAzimuthAngle)
+      spherical.phi = THREE.MathUtils.clamp(spherical.phi + dPolar, controls.minPolarAngle, controls.maxPolarAngle)
+      spherical.makeSafe()
+      camera.position.copy(controls.target).add(offset.setFromSpherical(spherical))
+      controls.update()
+      lastInput.current = performance.now()
+    }
+    cameraBridge.zoom = (factor) => {
+      const controls = controlsRef.current
+      if (!controls) return
+      offset.copy(camera.position).sub(controls.target)
+      const distance = THREE.MathUtils.clamp(offset.length() * factor, controls.minDistance, controls.maxDistance)
+      camera.position.copy(controls.target).add(offset.setLength(distance))
+      controls.update()
+      lastInput.current = performance.now()
+    }
+    cameraBridge.home = () => {
+      const controls = controlsRef.current
+      if (!controls || intro.current < 1) return
+      const sw = swing.current
+      sw.t = 0
+      sw.fromPos.copy(camera.position)
+      sw.fromTarget.copy(controls.target)
+      useUIStore.getState().setFollowFish(false)
+    }
     const bump = () => {
       lastInput.current = performance.now()
     }
@@ -67,7 +116,50 @@ export function CameraRig() {
       window.removeEventListener('wheel', bump)
       cameraBridge.controls = null
     }
-  }, [])
+  }, [camera])
+
+  // Two fingers turn and zoom the camera in every mode, even with a tool,
+  // food or a decoration in hand (those all let go when the second finger lands).
+  useEffect(() => {
+    const el = gl.domElement
+    const points = new Map<number, { x: number; y: number }>()
+    let last: { x: number; y: number; spread: number } | null = null
+    const pair = () => {
+      const [a, b] = [...points.values()]
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, spread: Math.hypot(a.x - b.x, a.y - b.y) }
+    }
+    const down = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      last = points.size === 2 ? pair() : null
+    }
+    const move = (e: PointerEvent) => {
+      const p = points.get(e.pointerId)
+      if (!p) return
+      p.x = e.clientX
+      p.y = e.clientY
+      if (points.size !== 2 || !last) return
+      const now = pair()
+      const h = Math.max(1, el.clientHeight)
+      cameraBridge.orbit((-2 * Math.PI * (now.x - last.x)) / h, (-2 * Math.PI * (now.y - last.y)) / h)
+      if (last.spread > 10 && now.spread > 10) cameraBridge.zoom(last.spread / now.spread)
+      last = now
+    }
+    const up = (e: PointerEvent) => {
+      if (!points.delete(e.pointerId)) return
+      last = points.size === 2 ? pair() : null
+    }
+    el.addEventListener('pointerdown', down)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      el.removeEventListener('pointerdown', down)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+  }, [gl])
 
   // Re-fit when the window changes shape (rotate phone, resize browser).
   useEffect(() => {
@@ -225,7 +317,8 @@ export function CameraRig() {
         minAzimuthAngle={cleaning ? -Infinity : -Math.PI * 0.42}
         maxAzimuthAngle={cleaning ? Infinity : Math.PI * 0.42}
         mouseButtons={{ LEFT: toolInHand ? undefined : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }}
-        touches={{ ONE: toolInHand ? undefined : THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE }}
+        // Two-finger gestures are handled above, so they work with a tool in hand too.
+        touches={{ ONE: toolInHand ? undefined : THREE.TOUCH.ROTATE, TWO: undefined }}
         target={HOME_TARGET.toArray()}
       />
     </>

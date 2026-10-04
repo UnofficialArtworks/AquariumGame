@@ -14,6 +14,7 @@ import { PhotoCapture, useAdaptiveDpr } from '../scene/RenderBudget'
 import { RelaxOverlay } from '../ui/RelaxOverlay'
 import { updateVisitors } from '../sim/visitors'
 import { runHelpers } from '../sim/helpers'
+import { applyTankSize } from '../state/tankSizes'
 
 export function GameRoot() {
   const sound = useGameStore((s) => s.settings.sound)
@@ -21,6 +22,11 @@ export function GameRoot() {
   const scrubbing = useUIStore((s) => s.mode === 'clean' && s.cleanTool === 'sponge' && s.toolActive)
   const relax = useUIStore((s) => s.relax)
   const { dpr, monitor } = useAdaptiveDpr()
+  // The tank's size is shared module state that the scene reads, so it's set
+  // before the scene renders (it's a no-op unless it changed). The scene is
+  // keyed on it, so a bigger tank rebuilds everything at the new size.
+  const tankSizeId = useGameStore((s) => s.tankSizeId)
+  applyTankSize(tankSizeId)
 
   useEffect(() => {
     let ticks = 0
@@ -50,6 +56,15 @@ export function GameRoot() {
     }
   }, [])
 
+  // No long-press or right-click menus over the game (text boxes keep theirs).
+  useEffect(() => {
+    const noMenu = (e: MouseEvent) => {
+      if (!(e.target instanceof Element && e.target.closest('input, textarea'))) e.preventDefault()
+    }
+    window.addEventListener('contextmenu', noMenu)
+    return () => window.removeEventListener('contextmenu', noMenu)
+  }, [])
+
   // Browsers only allow audio after a user gesture.
   useEffect(() => {
     window.addEventListener('pointerdown', unlockAudio, { once: true })
@@ -72,9 +87,14 @@ export function GameRoot() {
         shadows={{ type: PCFShadowMap }}
         dpr={dpr}
         gl={{ antialias: false, powerPreference: 'high-performance' }}
+        onPointerMissed={(e) => {
+          // A tap on empty water or gravel lets go of the selected decoration.
+          const ui = useUIStore.getState()
+          if (e.type === 'click' && ui.mode === 'decorate' && !ui.draggingId) ui.setSelectedDecorationId(null)
+        }}
       >
         {monitor}
-        <TankScene />
+        <TankScene key={tankSizeId} />
         <PhotoCapture />
       </Canvas>
       <ItemPreviewGenerator />

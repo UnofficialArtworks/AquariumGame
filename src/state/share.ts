@@ -5,11 +5,12 @@
 // fish just go by their species.
 import type { DecorationInstance, FishInstance, FishVitals, GameState, MorphId } from './types'
 import { getDecorationDef } from '../scene/decorations/decorationDefinitions'
-import { getFishDef, MAX_OWNED_FISH, resolveFishId } from '../scene/fish/fishDefinitions'
+import { getFishDef, resolveFishId } from '../scene/fish/fishDefinitions'
 import { BACKGROUND_CATALOG, DEFAULT_BACKGROUND_ID } from '../scene/backgrounds'
 import { DEFAULT_SUBSTRATE_ID, SUBSTRATE_CATALOG } from '../scene/substrates'
 import { DEFAULT_STAND_ID, STAND_CATALOG } from '../scene/stands/standDefinitions'
-import { clampToInterior } from '../scene/TankBounds'
+import { clampDecoration } from '../scene/TankBounds'
+import { aquariumCapacity, DEFAULT_TANK_SIZE, getTankSize } from './tankSizes'
 import { getMorph } from './morphs'
 import { isPattern } from './patterns'
 
@@ -18,6 +19,7 @@ export interface SharedTank {
   backgroundId: string
   substrateId: string
   standId: string
+  tankSizeId: string
   decorations: DecorationInstance[]
   fish: FishInstance[]
   /** Fish id → growth, so babies still look like babies. */
@@ -35,6 +37,8 @@ interface Packed {
   b: string
   g: string
   s: string
+  /** Tank size (left out for the classic tank, and in links made before tanks could grow). */
+  t?: string
   d: PackedDecoration[]
   f: PackedFish[]
 }
@@ -51,6 +55,7 @@ export function packTank(s: GameState): Packed {
     b: s.backgroundId,
     g: s.substrateId,
     s: s.standId,
+    ...(s.tankSizeId !== DEFAULT_TANK_SIZE ? { t: s.tankSizeId } : {}),
     d: s.placedDecorations.map((d) => [d.defId, round(d.position[0]), round(d.position[2]), round(d.rotationY)]),
     f: s.ownedFish
       .filter((f) => f.habitat === 'main')
@@ -82,17 +87,18 @@ export function unpackTank(raw: unknown): SharedTank | null {
   const p = raw as Partial<Packed> | null
   if (!p || typeof p !== 'object' || p.v !== 1 || !Array.isArray(p.d) || !Array.isArray(p.f)) return null
   const pick = <T extends { id: string }>(catalog: readonly T[], id: unknown, fallback: string) => (catalog.some((c) => c.id === id) ? (id as string) : fallback)
+  const size = getTankSize(str(p.t))
   const decorations: DecorationInstance[] = []
   for (const entry of p.d.slice(0, MAX_SHARED_DECORATIONS)) {
     if (!Array.isArray(entry)) continue
     const def = getDecorationDef(str(entry[0]))
     if (!def) continue
-    const [x, z] = clampToInterior(num(entry[1]), num(entry[2]), def.footprintRadius)
+    const [x, z] = clampDecoration(num(entry[1]), num(entry[2]), def.footprintRadius, size.width / 2, size.depth / 2)
     decorations.push({ id: `shared-d${decorations.length}`, defId: def.id, position: [x, 0, z], rotationY: num(entry[3]) % (Math.PI * 2) })
   }
   const fish: FishInstance[] = []
   const growth: Record<string, number> = {}
-  for (const entry of p.f.slice(0, MAX_OWNED_FISH)) {
+  for (const entry of p.f.slice(0, aquariumCapacity(size.id))) {
     if (!Array.isArray(entry)) continue
     const def = getFishDef(resolveFishId(str(entry[0])))
     if (!def) continue
@@ -122,6 +128,7 @@ export function unpackTank(raw: unknown): SharedTank | null {
     backgroundId: pick(BACKGROUND_CATALOG, p.b, DEFAULT_BACKGROUND_ID),
     substrateId: pick(SUBSTRATE_CATALOG, p.g, DEFAULT_SUBSTRATE_ID),
     standId: pick(STAND_CATALOG, p.s, DEFAULT_STAND_ID),
+    tankSizeId: size.id,
     decorations,
     fish,
     growth,
@@ -200,6 +207,7 @@ export function visitState(tank: SharedTank): Partial<GameState> {
     backgroundId: tank.backgroundId,
     substrateId: tank.substrateId,
     standId: tank.standId,
+    tankSizeId: tank.tankSizeId,
     placedDecorations: tank.decorations,
     ownedFish: tank.fish,
     fishVitals: vitals,

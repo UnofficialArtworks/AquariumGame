@@ -4,23 +4,24 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { atmosphere } from '../Atmosphere'
 import { ROOM_FLOOR_Y, STAND_DEPTH, STAND_HEIGHT, STAND_WIDTH, type StandStyle } from './standDefinitions'
+import { onTankResize } from '../TankBounds'
 
 // Everything below is built in "stand space": y = 0 is the room floor, y = H is the
 // top surface the tank rests on, +z is the front. Each style is a handful of merged
 // geometries (one per material), built lazily once and shared by every StandVisual.
 
-const W = STAND_WIDTH
-const D = STAND_DEPTH
+let W = STAND_WIDTH
+let D = STAND_DEPTH
 const H = STAND_HEIGHT
-const HW = W / 2
-const HD = D / 2
+let HW = W / 2
+let HD = D / 2
 const PI = Math.PI
 /** How far the top slab overhangs the body on every side. */
 const OVER = 0.06
 /** How far door panels stand proud of the body face. */
 const DF = 0.04
 const DOOR_GAP = 0.1
-const DOOR_W = (W - 0.44 - 2 * DOOR_GAP) / 3
+let DOOR_W = (W - 0.44 - 2 * DOOR_GAP) / 3
 const WHITE = '#ffffff'
 
 type Face = 'front' | 'back' | 'right' | 'left'
@@ -1387,6 +1388,17 @@ const BUILDERS: Record<StandStyle, () => StandKit> = {
 }
 
 const kits = new Map<StandStyle, StandKit>()
+
+// A bigger tank gets a bigger stand: re-measure and build every style afresh.
+// (standDefinitions registered first, so STAND_WIDTH is already updated.)
+onTankResize(() => {
+  W = STAND_WIDTH
+  D = STAND_DEPTH
+  HW = W / 2
+  HD = D / 2
+  DOOR_W = (W - 0.44 - 2 * DOOR_GAP) / 3
+  kits.clear()
+})
 
 /** Builds (once) and returns the shared geometry/materials for a stand style; unknown ids fall back to walnut. */
 function getStandKit(standId: string): StandKit {

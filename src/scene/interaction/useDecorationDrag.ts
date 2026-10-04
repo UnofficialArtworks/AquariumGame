@@ -2,37 +2,24 @@ import { useRef } from 'react'
 import type { Group } from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
 import { useUIStore } from '../../state/useUIStore'
-import { dragBridge } from './dragBridge'
+import { startDrag } from './dragBridge'
+import { touches } from './touches'
 
 /**
- * Attach the returned handlers to a decoration's root group. Picking it up
- * hands its Object3D off to DragSurface (see dragBridge.ts), which does the
- * actual per-frame position updates while the pointer moves.
+ * Attach the returned handler to a decoration's root group. Pressing it picks
+ * it up; DragSurface carries it while the pointer moves, and a press that
+ * barely moves just selects it.
  */
 export function useDecorationDrag(instanceId: string, footprintRadius: number) {
   const groupRef = useRef<Group>(null)
-  const setDraggingId = useUIStore((s) => s.setDraggingId)
-  const setSelectedDecorationId = useUIStore((s) => s.setSelectedDecorationId)
-
-  const pointerDownAt = useRef<{ x: number; y: number } | null>(null)
 
   const onPointerDown = (event: ThreeEvent<PointerEvent>) => {
+    // Only a left click or a single finger picks a decoration up. The right
+    // button and a second finger turn the camera, even over a decoration.
+    if (event.button !== 0 || touches.count > 1 || useUIStore.getState().draggingId) return
     event.stopPropagation()
-    pointerDownAt.current = { x: event.clientX, y: event.clientY }
-    if (!groupRef.current) return
-    dragBridge.current = groupRef.current
-    dragBridge.footprintRadius = footprintRadius
-    setDraggingId(instanceId)
+    if (groupRef.current) startDrag(instanceId, groupRef.current, footprintRadius, event)
   }
 
-  const onPointerUp = (event: ThreeEvent<PointerEvent>) => {
-    event.stopPropagation()
-    const start = pointerDownAt.current
-    const moved = start
-      ? Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4
-      : false
-    if (!moved) setSelectedDecorationId(instanceId)
-  }
-
-  return { groupRef, onPointerDown, onPointerUp }
+  return { groupRef, onPointerDown }
 }

@@ -1,11 +1,16 @@
 import type { Rarity, StyleTag } from '../../state/types'
-import { TANK_BOTTOM_Y, TANK_DEPTH, TANK_WIDTH } from '../TankBounds'
+import { onTankResize, TANK_BOTTOM_Y, TANK_DEPTH, TANK_WIDTH } from '../TankBounds'
 
 /** Shared stand dimensions: every style fills the same box under the tank. */
 export const STAND_TOP_Y = TANK_BOTTOM_Y - 0.06
 export const STAND_HEIGHT = 2.3
-export const STAND_WIDTH = TANK_WIDTH + 0.5
-export const STAND_DEPTH = TANK_DEPTH + 0.4
+export let STAND_WIDTH = TANK_WIDTH + 0.5
+export let STAND_DEPTH = TANK_DEPTH + 0.4
+// Stands are made to measure for the tank on top.
+onTankResize(() => {
+  STAND_WIDTH = TANK_WIDTH + 0.5
+  STAND_DEPTH = TANK_DEPTH + 0.4
+})
 /** Room floor height (the stand's feet rest here). */
 export const ROOM_FLOOR_Y = STAND_TOP_Y - STAND_HEIGHT
 

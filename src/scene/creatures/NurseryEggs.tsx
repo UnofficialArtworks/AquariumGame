@@ -30,11 +30,11 @@ const SPACING = R * 2.04
 /** Growth stages the embryo model steps through. */
 const STAGES = 6
 
-/** Hex-packed slots around the clutch centre: the middle, then ring by ring. */
+/** Hex-packed slots around the clutch centre: the middle, then ring by ring (37, more than the roomiest nursery holds). */
 const SLOTS: Array<[number, number]> = (() => {
   const slots: Array<[number, number]> = [[0, 0]]
   const dirs = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]
-  for (let ring = 1; ring <= 2; ring++) {
+  for (let ring = 1; ring <= 3; ring++) {
     let q = ring
     let r = -ring
     for (const [dq, dr] of dirs) {
@@ -54,6 +54,7 @@ function assignSlots(eggs: NurseryEgg[]): Map<string, number> {
   const slots = new Map<string, number>()
   const order = [...eggs].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1))
   for (const egg of order) {
+    if (taken.size >= SLOTS.length) break
     // Fill the clutch from the middle out, nudged per egg so it looks natural.
     let slot = Math.min(SLOTS.length - 1, slots.size + (hashString(egg.id) % 2))
     while (taken.has(slot)) slot = (slot + 1) % SLOTS.length
@@ -229,7 +230,10 @@ function HuskShell({ husk }: { husk: Husk }) {
 }
 
 /** The spawning stone the clutch sits on. */
-function SpawningStone() {
+/** Slots past the second ring sit off the small stone, so it grows for a big clutch. */
+const FIRST_OUTER_SLOT = 19
+
+function SpawningStone({ wide }: { wide: boolean }) {
   const parts = useMemo(() => {
     const b = new MeshBuilder()
     b.add('matte', new THREE.CylinderGeometry(0.95, 1.05, 0.07, 32, 1), { color: '#8b8478', colorTop: '#a39b8c', mottle: 0.18, scale: [1.05, 1, 0.85] })
@@ -237,7 +241,7 @@ function SpawningStone() {
   }, [])
   const y = floorHeightAt(CLUTCH[0], CLUTCH[1]) - 0.01
   return (
-    <group position={[CLUTCH[0], y, CLUTCH[1]]}>
+    <group position={[CLUTCH[0], y, CLUTCH[1]]} scale={wide ? [1.4, 1, 1.45] : 1}>
       {parts.map((p, i) => (
         <mesh key={i} geometry={p.geometry} material={decorMaterials[p.material]} receiveShadow />
       ))}
@@ -268,7 +272,7 @@ export function NurseryEggs() {
   }
   return (
     <group>
-      {(eggs.length > 0 || husks.length > 0) && <SpawningStone />}
+      {(eggs.length > 0 || husks.length > 0) && <SpawningStone wide={Math.max(-1, ...slots.values()) >= FIRST_OUTER_SLOT} />}
       {eggs.map((egg) => (
         <Egg key={egg.id} egg={egg} slot={slots.get(egg.id) ?? 0} />
       ))}

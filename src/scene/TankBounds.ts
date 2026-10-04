@@ -2,12 +2,17 @@
 // how big the tank is (walls, gravel, camera framing, drag clamping, fish
 // wander bounds, algae grid, water absorption) reads from here so there is
 // never a second copy to drift.
+//
+// The width and depth grow when the player buys a bigger tank. They're
+// exported as `let`, so every importer sees the new size; setTankSize()
+// updates everything derived from them, and the scene is remounted so
+// geometry built once is rebuilt at the new size.
 
 import { noise2 } from '../utils/noise'
 
-export const TANK_WIDTH = 8
+export let TANK_WIDTH = 8
 export const TANK_HEIGHT = 4.5
-export const TANK_DEPTH = 4
+export let TANK_DEPTH = 4
 
 export const GLASS_THICKNESS = 0.08
 export const FLOOR_Y = 0
@@ -15,15 +20,15 @@ export const FLOOR_Y = 0
 export const TANK_BOTTOM_Y = -0.32
 export const WATER_LINE_Y = TANK_HEIGHT * 0.92
 
-export const HALF_WIDTH = TANK_WIDTH / 2
-export const HALF_DEPTH = TANK_DEPTH / 2
+export let HALF_WIDTH = TANK_WIDTH / 2
+export let HALF_DEPTH = TANK_DEPTH / 2
 
-// How far from the glass walls placed items/fish are kept, so nothing visually
-// clips through the walls.
+// How far from the glass walls fish (and things they carry) are kept, so
+// nothing visually clips through the walls.
 export const INTERIOR_MARGIN = 0.35
 
-export const INTERIOR_HALF_WIDTH = HALF_WIDTH - INTERIOR_MARGIN
-export const INTERIOR_HALF_DEPTH = HALF_DEPTH - INTERIOR_MARGIN
+export let INTERIOR_HALF_WIDTH = HALF_WIDTH - INTERIOR_MARGIN
+export let INTERIOR_HALF_DEPTH = HALF_DEPTH - INTERIOR_MARGIN
 
 // Vertical swimming band for fish, kept well clear of the gravel and the
 // water line so nothing pokes out of the water or burrows into the floor.
@@ -52,6 +57,19 @@ export function floorHeightAt(x: number, z: number): number {
   return FLOOR_Y + slope + bumps
 }
 
+/** Decorations can stand right up against the glass, just clear of it. */
+const DECORATION_GAP = GLASS_THICKNESS / 2 + 0.03
+/** Footprints are generous circles, so only most of one has to fit. */
+const FOOTPRINT_FIT = 0.8
+
+/** Keep a decoration inside the glass (this tank's, or one `halfWidth` × `halfDepth`), as close to the walls as it fits. */
+export function clampDecoration(x: number, z: number, footprintRadius: number, halfWidth = HALF_WIDTH, halfDepth = HALF_DEPTH): [number, number] {
+  const r = footprintRadius * FOOTPRINT_FIT
+  const maxX = Math.max(0, halfWidth - DECORATION_GAP - r)
+  const maxZ = Math.max(0, halfDepth - DECORATION_GAP - r)
+  return [Math.max(-maxX, Math.min(maxX, x)), Math.max(-maxZ, Math.min(maxZ, z))]
+}
+
 export function clampToInterior(x: number, z: number, footprintRadius = 0): [number, number] {
   const maxX = INTERIOR_HALF_WIDTH - footprintRadius
   const maxZ = INTERIOR_HALF_DEPTH - footprintRadius
@@ -72,7 +90,7 @@ export function clampToSwimBounds(x: number, y: number, z: number, margin = 0): 
 //   back   z=-D/2, x: +W/2 -> -W/2   s in [W+D, 2W+D)
 //   left   x=-W/2, z: -D/2 -> +D/2   s in [2W+D, 2W+2D)
 
-export const PERIMETER = 2 * TANK_WIDTH + 2 * TANK_DEPTH
+export let PERIMETER = 2 * TANK_WIDTH + 2 * TANK_DEPTH
 
 export type WallId = 'front' | 'right' | 'back' | 'left'
 
@@ -92,12 +110,38 @@ export interface WallMapping {
 
 const INNER = GLASS_THICKNESS / 2
 
-export const WALLS: WallMapping[] = [
-  { id: 'front', axis: 'x', a: 1, b: HALF_WIDTH, normal: [0, 0, -1], planeCoord: HALF_DEPTH - INNER, length: TANK_WIDTH },
-  { id: 'right', axis: 'z', a: -1, b: TANK_WIDTH + HALF_DEPTH, normal: [-1, 0, 0], planeCoord: HALF_WIDTH - INNER, length: TANK_DEPTH },
-  { id: 'back', axis: 'x', a: -1, b: TANK_WIDTH + TANK_DEPTH + HALF_WIDTH, normal: [0, 0, 1], planeCoord: -HALF_DEPTH + INNER, length: TANK_WIDTH },
-  { id: 'left', axis: 'z', a: 1, b: 2 * TANK_WIDTH + TANK_DEPTH + HALF_DEPTH, normal: [1, 0, 0], planeCoord: -HALF_WIDTH + INNER, length: TANK_DEPTH },
-]
+function buildWalls(): WallMapping[] {
+  return [
+    { id: 'front', axis: 'x', a: 1, b: HALF_WIDTH, normal: [0, 0, -1], planeCoord: HALF_DEPTH - INNER, length: TANK_WIDTH },
+    { id: 'right', axis: 'z', a: -1, b: TANK_WIDTH + HALF_DEPTH, normal: [-1, 0, 0], planeCoord: HALF_WIDTH - INNER, length: TANK_DEPTH },
+    { id: 'back', axis: 'x', a: -1, b: TANK_WIDTH + TANK_DEPTH + HALF_WIDTH, normal: [0, 0, 1], planeCoord: -HALF_DEPTH + INNER, length: TANK_WIDTH },
+    { id: 'left', axis: 'z', a: 1, b: 2 * TANK_WIDTH + TANK_DEPTH + HALF_DEPTH, normal: [1, 0, 0], planeCoord: -HALF_WIDTH + INNER, length: TANK_DEPTH },
+  ]
+}
+
+export let WALLS: WallMapping[] = buildWalls()
+
+const resizeListeners = new Set<() => void>()
+
+/** Run `listener` whenever the tank changes size (for things sized once, like the algae grid). */
+export function onTankResize(listener: () => void): () => void {
+  resizeListeners.add(listener)
+  return () => resizeListeners.delete(listener)
+}
+
+/** Grow (or shrink) the tank. Everything derived from its size follows. */
+export function setTankSize(width: number, depth: number) {
+  if (width === TANK_WIDTH && depth === TANK_DEPTH) return
+  TANK_WIDTH = width
+  TANK_DEPTH = depth
+  HALF_WIDTH = width / 2
+  HALF_DEPTH = depth / 2
+  INTERIOR_HALF_WIDTH = HALF_WIDTH - INTERIOR_MARGIN
+  INTERIOR_HALF_DEPTH = HALF_DEPTH - INTERIOR_MARGIN
+  PERIMETER = 2 * width + 2 * depth
+  WALLS = buildWalls()
+  for (const listener of resizeListeners) listener()
+}
 
 /** Perimeter coordinate s for a world point known to lie on the given wall. */
 export function perimeterS(wall: WallMapping, x: number, z: number): number {

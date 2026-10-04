@@ -3,6 +3,8 @@ import type { VisitorGift, VisitorLog } from './visitors'
 import type { OceanFish } from './ocean'
 import type { SeasonId } from './seasons'
 import type { FishingDay } from './fishing'
+import type { NurseryUpgradeLevels } from './nurseryUpgrades'
+import type { CharmBag, CharmId } from './charms'
 export type StyleTag = 'neutral' | 'adventure' | 'sparkle' | 'nature' | 'classic' | 'scifi'
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
@@ -147,6 +149,8 @@ export interface NurserySession {
   remainingSeconds: number
   /** Sampled at pairing and reserved until the round completes. */
   eggCount: number
+  /** A lucky charm used on this friendship's clutch. */
+  charm?: CharmId
 }
 
 export interface NurseryEgg {
@@ -216,6 +220,10 @@ export interface GameState {
   fishVitals: Record<string, FishVitals>
   nurserySession: NurserySession | null
   nurseryEggs: NurseryEgg[]
+  /** Levels of each nursery upgrade bought (see nurseryUpgrades.ts). */
+  nurseryUpgrades: NurseryUpgradeLevels
+  /** Lucky charms carried, by kind. */
+  charms: CharmBag
   unlockedDecorationDefIds: string[]
   placedDecorations: DecorationInstance[]
   backgroundId: string
@@ -225,6 +233,8 @@ export interface GameState {
   /** Cabinet the tank sits on. */
   standId: string
   unlockedStandIds: string[]
+  /** The aquarium's size (see tankSizes.ts); bigger tanks are bought in the shop. */
+  tankSizeId: string
   /** Cleaning tools bought from the shop (the starter sponge and vacuum are always owned). */
   ownedToolIds: string[]
   equippedGlassTool: string

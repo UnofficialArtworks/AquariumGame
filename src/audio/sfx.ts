@@ -172,6 +172,15 @@ export const sfx = {
   magic() {
     ;[1047, 1319, 1568, 2093].forEach((f, i) => tone(f, 0.25, { type: 'sine', volume: 0.08, delay: i * 0.05 }))
   },
+  /** Lifting a decoration off the gravel. */
+  pickUp() {
+    tone(380, 0.09, { endFreq: 620, volume: 0.07, type: 'triangle' })
+  },
+  /** Setting a decoration down on the gravel. */
+  place() {
+    tone(190, 0.14, { endFreq: 95, volume: 0.16 })
+    noise(0.1, { freq: 700, q: 0.8, volume: 0.05, type: 'lowpass' })
+  },
   /** A fishing line whipping out over the water. */
   cast() {
     noise(0.32, { freq: 700, endFreq: 2600, q: 0.8, volume: 0.06 })

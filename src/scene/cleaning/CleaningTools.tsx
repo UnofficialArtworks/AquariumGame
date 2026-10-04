@@ -19,12 +19,14 @@ import {
   GLASS_THICKNESS,
   HALF_DEPTH,
   HALF_WIDTH,
+  onTankResize,
   TANK_BOTTOM_Y,
   TANK_HEIGHT,
   WALLS,
   type WallMapping,
 } from '../TankBounds'
 import { ROOM_FLOOR_Y, STAND_TOP_Y, STAND_WIDTH } from '../stands/standDefinitions'
+import { onTouchCount, touches } from '../interaction/touches'
 import type { WasteItem } from '../../state/types'
 
 const INNER = GLASS_THICKNESS / 2
@@ -53,7 +55,8 @@ function useCanvasPointer() {
       toolPointer.seen = true
     }
     const onDown = (e: PointerEvent) => {
-      if (e.button !== 0) return
+      // A second finger is for the camera, not a second scrub.
+      if (e.button !== 0 || touches.count > 1) return
       track(e)
       toolPointer.downNdc.copy(toolPointer.ndc)
       toolPointer.down = true
@@ -62,6 +65,10 @@ function useCanvasPointer() {
     const onUp = () => {
       toolPointer.down = false
     }
+    // When a second finger lands, put the tool down so the camera can turn.
+    const stopForSecondFinger = onTouchCount((count) => {
+      if (count > 1) toolPointer.down = false
+    })
     el.addEventListener('pointerdown', onDown)
     window.addEventListener('pointermove', track)
     window.addEventListener('pointerup', onUp)
@@ -73,6 +80,7 @@ function useCanvasPointer() {
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
       window.removeEventListener('blur', onUp)
+      stopForSecondFinger()
       toolPointer.down = false
       toolPointer.pressed = false
     }
@@ -85,13 +93,17 @@ const UP = new THREE.Vector3(0, 1, 0)
 
 // --- glass tools -------------------------------------------------------------
 
-const wallPlanes = new Map<WallMapping, THREE.Plane>(
-  WALLS.map((w) => {
-    const normal = new THREE.Vector3(...w.normal)
-    const point = w.axis === 'x' ? new THREE.Vector3(0, 0, w.planeCoord) : new THREE.Vector3(w.planeCoord, 0, 0)
-    return [w, new THREE.Plane().setFromNormalAndCoplanarPoint(normal, point)]
-  }),
-)
+function buildWallPlanes() {
+  return new Map<WallMapping, THREE.Plane>(
+    WALLS.map((w) => {
+      const normal = new THREE.Vector3(...w.normal)
+      const point = w.axis === 'x' ? new THREE.Vector3(0, 0, w.planeCoord) : new THREE.Vector3(w.planeCoord, 0, 0)
+      return [w, new THREE.Plane().setFromNormalAndCoplanarPoint(normal, point)]
+    }),
+  )
+}
+
+let wallPlanes = buildWallPlanes()
 
 function alongOf(wall: WallMapping, p: THREE.Vector3): number {
   return wall.axis === 'x' ? p.x : p.z
@@ -136,6 +148,14 @@ const glass = {
   lastSoundAt: 0,
   spin: 0,
 }
+
+// The walls move when the tank grows.
+onTankResize(() => {
+  wallPlanes = buildWallPlanes()
+  glass.wall = WALLS[0]
+  glass.active = false
+  glass.hasLast = false
+})
 
 function scrubPath(tool: GlassToolDef, wall: WallMapping, fromAlong: number, fromY: number, toAlong: number, toY: number, strengthScale = 1): number {
   const dist = Math.hypot(toAlong - fromAlong, toY - fromY)

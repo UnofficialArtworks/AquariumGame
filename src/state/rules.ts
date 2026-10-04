@@ -1,9 +1,10 @@
 import { getSeason, inSeason, type SeasonId } from './seasons'
 import type { GameState, Habitat } from './types'
 import { levelFromXp } from './progression'
-import { NURSERY_CAPACITY } from './economy'
+import { nurseryCapacity } from './nurseryUpgrades'
 import { getEggCountRange } from './nursery'
-import { FISH_CATALOG, getFishDef, MAX_OWNED_FISH } from '../scene/fish/fishDefinitions'
+import { FISH_CATALOG, getFishDef } from '../scene/fish/fishDefinitions'
+import { aquariumCapacity, TANK_SIZES, tankSizeIndex } from './tankSizes'
 import { DECORATION_CATALOG, getDecorationDef } from '../scene/decorations/decorationDefinitions'
 import { FOOD_CATALOG, getFoodDef } from '../scene/food/foodDefinitions'
 import { BACKGROUND_CATALOG, getBackgroundDef } from '../scene/backgrounds'
@@ -20,13 +21,13 @@ import { getToolDef, TOOL_CATALOG } from '../scene/cleaning/toolDefinitions'
 // --- shop -------------------------------------------------------------------------
 
 /** Shop categories, one per Shop drawer tab. */
-export type ShopCategory = 'fish' | 'decorations' | 'treats' | 'tools' | 'backgrounds' | 'gravel' | 'stands'
+export type ShopCategory = 'fish' | 'decorations' | 'treats' | 'tools' | 'backgrounds' | 'gravel' | 'stands' | 'tanks'
 
-export const SHOP_CATEGORIES: ShopCategory[] = ['fish', 'decorations', 'treats', 'tools', 'backgrounds', 'gravel', 'stands']
+export const SHOP_CATEGORIES: ShopCategory[] = ['fish', 'decorations', 'treats', 'tools', 'backgrounds', 'gravel', 'stands', 'tanks']
 
 export type PurchaseState = Pick<
   GameState,
-  'xp' | 'currency' | 'ownedFish' | 'unlockedDecorationDefIds' | 'unlockedBackgroundIds' | 'unlockedSubstrateIds' | 'unlockedStandIds' | 'ownedToolIds'
+  'xp' | 'currency' | 'ownedFish' | 'unlockedDecorationDefIds' | 'unlockedBackgroundIds' | 'unlockedSubstrateIds' | 'unlockedStandIds' | 'ownedToolIds' | 'tankSizeId'
 >
 
 /** Why something can't be bought: not sold, level too low, already yours, no room, or too few coins. */
@@ -40,6 +41,8 @@ export interface PurchaseCheck {
   /** Seasonal items: the season they're sold in. */
   season?: SeasonId
   pond?: boolean
+  /** How many fish the aquarium holds, for "it's full" messages. */
+  capacity?: number
 }
 
 interface ShopEntry {
@@ -100,7 +103,7 @@ function shopEntry(s: PurchaseState, category: ShopCategory, id: string): ShopEn
     case 'fish': {
       const def = getFishDef(id)
       // Pond fish arrive in the pond, so it's the pond that must have room.
-      const full = def?.pond ? pondCount(s.ownedFish) >= POND_CAPACITY : mainTankCount(s.ownedFish) >= MAX_OWNED_FISH
+      const full = def?.pond ? pondCount(s.ownedFish) >= POND_CAPACITY : mainTankCount(s.ownedFish) >= aquariumCapacity(s.tankSizeId)
       return def ? { cost: def.cost, unlockLevel: def.unlockLevel, owned: false, full, pond: def.pond } : null
     }
     case 'decorations': {
@@ -128,6 +131,11 @@ function shopEntry(s: PurchaseState, category: ShopCategory, id: string): ShopEn
       const def = getStandDef(id)
       return def.id === id ? { cost: def.cost, unlockLevel: def.unlockLevel, owned: s.unlockedStandIds.includes(id) } : null
     }
+    case 'tanks': {
+      // A bigger tank counts as owning every smaller one.
+      const index = TANK_SIZES.findIndex((t) => t.id === id)
+      return index >= 0 ? { cost: TANK_SIZES[index].cost, unlockLevel: TANK_SIZES[index].unlockLevel, owned: tankSizeIndex(s.tankSizeId) >= index } : null
+    }
   }
 }
 
@@ -141,7 +149,7 @@ export function checkPurchase(s: PurchaseState, category: ShopCategory, id: stri
     : entry.full ? 'full'
     : s.currency < entry.cost ? 'short'
     : undefined
-  return { ok: !reason, reason, cost: entry.cost, unlockLevel: entry.unlockLevel, season: entry.season, pond: entry.pond }
+  return { ok: !reason, reason, cost: entry.cost, unlockLevel: entry.unlockLevel, season: entry.season, pond: entry.pond, capacity: aquariumCapacity(s.tankSizeId) }
 }
 
 /** XP for buying something: a little for everything, more for big purchases. */
@@ -159,7 +167,7 @@ export function purchaseProblem(check: PurchaseCheck, name: string, currency: nu
     case 'full':
       return check.pond
         ? `The Koi Pond is full (${POND_CAPACITY}/${POND_CAPACITY}). Move a pond fish to the nursery or say goodbye to one to make room.`
-        : `Your aquarium is full (${MAX_OWNED_FISH}/${MAX_OWNED_FISH}). Move a fish to the nursery or sell one to make room.`
+        : `Your aquarium is full (${check.capacity}/${check.capacity}). Move a fish to the nursery, sell one, or get a bigger tank.`
     case 'owned':
       return `You already have ${name}.`
     case 'season': {
@@ -190,6 +198,8 @@ function shopCatalog(category: ShopCategory): ReadonlyArray<{ id: string; unlock
       return SUBSTRATE_CATALOG
     case 'stands':
       return STAND_CATALOG
+    case 'tanks':
+      return TANK_SIZES
   }
 }
 
@@ -215,7 +225,7 @@ export function firstNewShopCategory(seenLevel: number, level: number): ShopCate
 
 // --- the two tanks ----------------------------------------------------------------
 
-type TankState = Pick<GameState, 'ownedFish' | 'nurseryEggs' | 'nurserySession'> & Partial<Pick<GameState, 'xp'>>
+type TankState = Pick<GameState, 'ownedFish' | 'nurseryEggs' | 'nurserySession'> & Partial<Pick<GameState, 'xp' | 'tankSizeId' | 'nurseryUpgrades'>>
 
 /** Nursery spots in use: little fish, eggs, and a clutch a friendship has reserved. */
 export function nurseryOccupancy(s: TankState): number {
@@ -236,12 +246,14 @@ export function transferProblem(s: TankState, fishId: string, destination: Habit
   if (destination === 'main' && getFishDef(fish.defId)?.pond) return `${fish.name} is a pond fish and needs the open space of the Koi Pond.`
   if (destination === 'nursery') {
     const used = nurseryOccupancy(s)
-    if (used >= NURSERY_CAPACITY) {
+    const capacity = nurseryCapacity(s.nurseryUpgrades)
+    if (used >= capacity) {
       const eggs = s.nurseryEggs.length + (s.nurserySession?.eggCount ?? 0)
-      return `The nursery is full (${used}/${NURSERY_CAPACITY}).${eggs ? ' Eggs keep their spot until they hatch.' : ' Move a little fish to your aquarium first.'}`
+      return `The nursery is full (${used}/${capacity}).${eggs ? ' Eggs keep their spot until they hatch.' : ' Move a little fish to your aquarium first.'}`
     }
-  } else if (mainTankCount(s.ownedFish) >= MAX_OWNED_FISH) {
-    return `Your aquarium is full (${MAX_OWNED_FISH}/${MAX_OWNED_FISH}). Sell a fish to make room.`
+  } else if (mainTankCount(s.ownedFish) >= aquariumCapacity(s.tankSizeId)) {
+    const capacity = aquariumCapacity(s.tankSizeId)
+    return `Your aquarium is full (${capacity}/${capacity}). Sell a fish or get a bigger tank to make room.`
   }
   return null
 }
@@ -262,7 +274,7 @@ export function friendshipProblem(s: FriendshipState, firstId: string, secondId:
   }
   const first = s.ownedFish.find((f) => f.id === firstId)!
   const clutch = getEggCountRange(first.defId)[1]
-  const free = NURSERY_CAPACITY - nurseryOccupancy(s)
+  const free = nurseryCapacity(s.nurseryUpgrades) - nurseryOccupancy(s)
   if (clutch > free) {
     return `${first.name}'s clutch needs ${clutch} free spots and the nursery has ${Math.max(0, free)}. Move some little fish to your aquarium first.`
   }
@@ -274,7 +286,7 @@ export function friendshipReady(s: FriendshipState): boolean {
   if (s.nurserySession) return false
   const grown = s.ownedFish.filter((f) => f.habitat === 'nursery' && (s.fishVitals[f.id]?.growth ?? 0) >= 1)
   if (grown.length < 2) return false
-  const free = NURSERY_CAPACITY - nurseryOccupancy(s)
+  const free = nurseryCapacity(s.nurseryUpgrades) - nurseryOccupancy(s)
   // Whoever is picked first sets the clutch size, so one that fits is enough.
   return grown.some((f) => getEggCountRange(f.defId)[1] <= free)
 }

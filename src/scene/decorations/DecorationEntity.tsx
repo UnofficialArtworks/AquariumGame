@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { DecorationInstance } from '../../state/types'
@@ -16,6 +16,20 @@ const ringMaterial = new THREE.MeshBasicMaterial({
   toneMapped: false,
 })
 
+/** Never drawn, but still hit by the pointer. */
+const handleMaterial = new THREE.MeshBasicMaterial({ visible: false })
+
+/**
+ * An invisible column over the decoration's footprint while decorating, so
+ * thin or lacy pieces (driftwood, fans, plants) are as easy to grab as a rock.
+ */
+function GrabHandle({ radius, height }: { radius: number; height: number }) {
+  const h = Math.min(2.4, Math.max(0.35, height))
+  const geometry = useMemo(() => new THREE.CylinderGeometry(radius * 0.8, radius * 0.8, h, 16), [radius, h])
+  useEffect(() => () => geometry.dispose(), [geometry])
+  return <mesh geometry={geometry} material={handleMaterial} position={[0, h / 2, 0]} />
+}
+
 /** Glowing ring on the gravel marking the selected decoration. */
 function SelectionRing({ radius }: { radius: number }) {
   const ref = useRef<THREE.Mesh>(null)
@@ -30,9 +44,11 @@ function SelectionRing({ radius }: { radius: number }) {
 
 export function DecorationEntity({ instance }: { instance: DecorationInstance }) {
   const def = getDecorationDef(instance.defId)
-  const { groupRef, onPointerDown, onPointerUp } = useDecorationDrag(instance.id, def?.footprintRadius ?? 0.3)
+  const { groupRef, onPointerDown } = useDecorationDrag(instance.id, def?.footprintRadius ?? 0.3)
   const isSelected = useUIStore((s) => s.selectedDecorationId === instance.id)
-  const isDecorateMode = useUIStore((s) => s.mode === 'decorate')
+  const isCarried = useUIStore((s) => s.draggingId === instance.id)
+  // Only the main aquarium's decorations can be moved (the nursery and pond are laid out for you).
+  const isDecorateMode = useUIStore((s) => s.mode === 'decorate' && s.activeTank === 'main' && !s.visiting)
 
   if (!def) return null
   const [x, , z] = instance.position
@@ -43,7 +59,6 @@ export function DecorationEntity({ instance }: { instance: DecorationInstance })
       position={[x, floorHeightAt(x, z) - 0.02, z]}
       rotation={[0, instance.rotationY, 0]}
       onPointerDown={isDecorateMode ? onPointerDown : undefined}
-      onPointerUp={isDecorateMode ? onPointerUp : undefined}
       onPointerOver={
         isDecorateMode
           ? (e: ThreeEvent<PointerEvent>) => {
@@ -61,7 +76,8 @@ export function DecorationEntity({ instance }: { instance: DecorationInstance })
       }
     >
       <DecorationVisual def={def} instanceId={instance.id} />
-      {isSelected && isDecorateMode && <SelectionRing radius={def.footprintRadius} />}
+      {isDecorateMode && <GrabHandle radius={def.footprintRadius} height={def.height} />}
+      {isSelected && isDecorateMode && !isCarried && <SelectionRing radius={def.footprintRadius} />}
     </group>
   )
 }

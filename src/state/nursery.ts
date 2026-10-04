@@ -1,10 +1,11 @@
 import { getFishDef, sampleFishSize } from '../scene/fish/fishDefinitions'
 import { morphedDefinition, rollMorph } from './morphs'
 import { hasPatterns, patternOf, rollPattern } from './patterns'
-import { NURSERY_CAPACITY } from './economy'
+import { nurseryCapacity, nurserySpeed } from './nurseryUpgrades'
 import { pickFishName } from './names'
 import { freshVitals } from './migrations'
 import type { FishInstance, GameState, NurseryEgg } from './types'
+import { luckOf, type Luck } from './charms'
 
 /** Body/species from one parent, actual colors from the other, including later generations. */
 export function inheritedDefinition(fish: Pick<FishInstance, 'defId' | 'inheritance'>) {
@@ -21,15 +22,15 @@ function basePalette(fish: FishInstance) {
   return { color: def.color, color2: def.color2, color3: def.color3 }
 }
 
-export function createNurseryEgg(first: FishInstance, second: FishInstance, createdAt = Date.now()): NurseryEgg {
+export function createNurseryEgg(first: FishInstance, second: FishInstance, createdAt = Date.now(), luck: Luck = {}): NurseryEgg {
   const [body, colors] = Math.random() < 0.5 ? [first, second] : [second, first]
   // A morph is rolled fresh for every egg (more likely from a morph parent);
   // otherwise the colour parent passes on its underlying palette.
   const palette = basePalette(colors)
-  const morph = rollMorph([first.inheritance?.morph, second.inheritance?.morph])
+  const morph = rollMorph([first.inheritance?.morph, second.inheritance?.morph], Math.random, luck)
   const hatchSeconds = sampleEggHatchSeconds(body.defId)
   // The pattern comes from either parent, with a chance of a surprise when theirs match.
-  const pattern = hasPatterns(getFishDef(body.defId)) ? rollPattern(patternOf(first), patternOf(second)) : undefined
+  const pattern = hasPatterns(getFishDef(body.defId)) ? rollPattern(patternOf(first), patternOf(second), Math.random, luck) : undefined
   return {
     id: crypto.randomUUID(), defId: body.defId, createdAt, hatchSeconds, remainingSeconds: hatchSeconds,
     inheritance: {
@@ -81,9 +82,12 @@ export type NurseryProgress = Pick<GameState, 'nurserySession' | 'nurseryEggs' |
 /**
  * Run the nursery forward by `seconds`: a friendship ends (or lays its
  * clutch), eggs count down, and any that are due hatch into little fish.
+ * An egg warmer makes nursery time run faster than real time.
  * Pure: takes a state and returns the parts that changed.
  */
-export function progressNursery(s: GameState, seconds: number): NurseryProgress {
+export function progressNursery(s: GameState, realSeconds: number): NurseryProgress {
+  const speed = nurserySpeed(s.nurseryUpgrades)
+  const seconds = realSeconds * speed
   const session = s.nurserySession
   const occupied = s.ownedFish.filter((f) => f.habitat === 'nursery').length + s.nurseryEggs.length
   let nextSession = session
@@ -92,14 +96,14 @@ export function progressNursery(s: GameState, seconds: number): NurseryProgress 
   if (session) {
     const parents = session.parentIds.map((id) => s.ownedFish.find((f) => f.id === id))
     if (parents.some((f) => !f || f.habitat !== 'nursery' || (s.fishVitals[f.id]?.growth ?? 0) < 1)
-      || occupied + session.eggCount > NURSERY_CAPACITY) {
+      || occupied + session.eggCount > nurseryCapacity(s.nurseryUpgrades)) {
       nextSession = null
     } else if (session.remainingSeconds > seconds) {
       nextSession = { ...session, remainingSeconds: session.remainingSeconds - seconds }
     } else {
       const leftover = Math.max(0, seconds - session.remainingSeconds)
       for (let i = 0; i < session.eggCount; i++) {
-        const egg = createNurseryEgg(parents[0]!, parents[1]!, Date.now() - leftover * 1000)
+        const egg = createNurseryEgg(parents[0]!, parents[1]!, Date.now() - (leftover / speed) * 1000, luckOf(session.charm))
         eggs.push({ ...egg, remainingSeconds: egg.hatchSeconds - leftover })
       }
       nextSession = null
@@ -126,7 +130,7 @@ export function progressNursery(s: GameState, seconds: number): NurseryProgress 
     // The baby keeps its egg's id, so the scene can show it swimming out of that egg.
     const id = egg.id
     const name = pickFishName(ownedFish.map((f) => f.name))
-    const fish: FishInstance = { id, defId: egg.defId, name, bornAt: Date.now() + egg.remainingSeconds * 1000,
+    const fish: FishInstance = { id, defId: egg.defId, name, bornAt: Date.now() + (egg.remainingSeconds / speed) * 1000,
       habitat: 'nursery', sizeScale: sampleFishSize(egg.defId), inheritance: egg.inheritance }
     ownedFish.push(fish)
     hatched.push(fish)

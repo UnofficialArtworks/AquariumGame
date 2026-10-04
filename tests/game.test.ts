@@ -4,6 +4,7 @@ import './cleaning.test'
 import { createInitialState, freshVitals, migrate } from '../src/state/migrations'
 import { FISH_CATALOG, getFishDef, MAX_OWNED_FISH } from '../src/scene/fish/fishDefinitions'
 import { STAND_CATALOG } from '../src/scene/stands/standDefinitions'
+import { TANK_SIZES } from '../src/state/tankSizes'
 import { TOOL_CATALOG } from '../src/scene/cleaning/toolDefinitions'
 import { DECORATION_CATALOG } from '../src/scene/decorations/decorationDefinitions'
 import { BACKGROUND_CATALOG } from '../src/scene/backgrounds'
@@ -692,7 +693,7 @@ test('"new" badges count shop unlocks and hatchlings since the last look, and ol
   const level = levelFromXp(store.getState().xp).level
   const shopItems = [
     ...FISH_CATALOG, ...DECORATION_CATALOG, ...BACKGROUND_CATALOG, ...SUBSTRATE_CATALOG,
-    ...FOOD_CATALOG.filter((d) => !d.unlimited), ...STAND_CATALOG, ...TOOL_CATALOG,
+    ...FOOD_CATALOG.filter((d) => !d.unlimited), ...STAND_CATALOG, ...TOOL_CATALOG, ...TANK_SIZES,
   ]
   const expected = shopItems.filter((d) => d.unlockLevel > 1 && d.unlockLevel <= level).length
   assert.ok(expected > 0)
@@ -1320,4 +1321,194 @@ test('fishing: a few casts a day, fair catches, and caught fish land somewhere w
   assert.equal(caught.inheritance?.morph, 'golden')
   assert.ok(store.getState().fishpedia.guppy?.morphs?.includes('golden'))
   assert.equal(store.getState().stats.fishCaught, 2)
+})
+
+test('bigger tanks: bought in the shop, hold more fish, give decorations more room, and travel in shared links', async () => {
+  const { TANK_SIZES, aquariumCapacity, applyTankSize, getTankSize } = await import('../src/state/tankSizes')
+  const bounds = await import('../src/scene/TankBounds')
+  const { packTank, unpackTank, visitState } = await import('../src/state/share')
+  const algae = await import('../src/sim/algae')
+  // Each size is bigger, dearer, later and holds more fish than the last.
+  for (let i = 1; i < TANK_SIZES.length; i++) {
+    const [a, b] = [TANK_SIZES[i - 1], TANK_SIZES[i]]
+    assert.ok(b.width > a.width && b.depth > a.depth && b.cost > a.cost && b.unlockLevel > a.unlockLevel)
+    assert.ok(aquariumCapacity(b.id) > aquariumCapacity(a.id))
+  }
+  assert.equal(aquariumCapacity('classic'), MAX_OWNED_FISH)
+  assert.equal(getTankSize('nope').id, 'classic')
+
+  // Buying one: locked until its level, then it's yours, and every smaller size counts as owned.
+  store.setState({ xp: 0, currency: 100000, tankSizeId: 'classic' })
+  assert.equal(checkPurchase(store.getState(), 'tanks', 'grand').reason, 'locked')
+  store.setState({ xp: 999999 })
+  const coins = store.getState().currency
+  assert.ok(store.getState().buyTankSize('grand'))
+  assert.equal(store.getState().tankSizeId, 'grand')
+  assert.equal(store.getState().currency, coins - getTankSize('grand').cost)
+  assert.equal(checkPurchase(store.getState(), 'tanks', 'roomy').reason, 'owned')
+  assert.equal(checkPurchase(store.getState(), 'tanks', 'panorama').ok, true)
+  // Room for more fish than the classic tank.
+  const fish = Array.from({ length: MAX_OWNED_FISH }, (_, i) => ({ id: `t${i}`, defId: 'guppy', name: `T${i}`, bornAt: 0, habitat: 'main' as const, sizeScale: 1 }))
+  store.setState({ ownedFish: fish })
+  assert.equal(checkPurchase(store.getState(), 'fish', 'guppy').ok, true)
+  store.setState({ tankSizeId: 'classic' })
+  assert.equal(checkPurchase(store.getState(), 'fish', 'guppy').reason, 'full')
+  assert.match(purchaseProblem(checkPurchase(store.getState(), 'fish', 'guppy'), 'Guppy', 0)!, /bigger tank/)
+
+  // Resizing moves every wall, the algae grid follows, and decorations can sit right by the glass.
+  try {
+    const cols = algae.ALGAE_COLS
+    applyTankSize('panorama')
+    assert.equal(bounds.TANK_WIDTH, 12.5)
+    assert.equal(bounds.HALF_DEPTH, 2.9)
+    assert.equal(bounds.PERIMETER, 2 * 12.5 + 2 * 5.8)
+    assert.equal(bounds.WALLS[1].planeCoord, 6.25 - bounds.GLASS_THICKNESS / 2)
+    assert.ok(algae.ALGAE_COLS > cols)
+    const [x, z] = bounds.clampDecoration(99, -99, 0.5)
+    assert.ok(x > 5.7 && x < 6.25 - 0.4 && z < -2.3 && z > -2.9 + 0.4)
+    // Much closer to the glass than fish are kept.
+    assert.ok(bounds.clampDecoration(99, 0, 0.5)[0] > bounds.clampToInterior(99, 0, 0.5)[0] + 0.3)
+  } finally {
+    applyTankSize('classic')
+  }
+  assert.equal(bounds.TANK_WIDTH, 8)
+
+  // A shared link keeps the tank's size, and its decorations stay where they were.
+  store.setState({ tankSizeId: 'panorama', placedDecorations: [{ id: 'far', defId: 'rock-cluster', position: [5.6, 0, 2.3], rotationY: 0 }] })
+  const shared = unpackTank(JSON.parse(JSON.stringify(packTank(store.getState()))))!
+  assert.equal(shared.tankSizeId, 'panorama')
+  assert.deepEqual(shared.decorations[0].position, [5.6, 0, 2.3])
+  assert.equal(visitState(shared).tankSizeId, 'panorama')
+  // Links from before tanks could grow open as the classic tank.
+  const old = packTank({ ...store.getState(), tankSizeId: 'classic' })
+  assert.equal('t' in old, false)
+  assert.equal(unpackTank(old)!.tankSizeId, 'classic')
+
+  // Saves keep the size; anything odd falls back to the classic tank.
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  assert.equal(migrate({ ...saved }, 6).tankSizeId, 'panorama')
+  assert.equal(migrate({ ...saved, tankSizeId: 'mansion' }, 6).tankSizeId, 'classic')
+  store.setState({ tankSizeId: 'classic', placedDecorations: [], ownedFish: [] })
+})
+
+test('nursery upgrades: bought a level at a time, they add room, speed up eggs, feed babies better and can add an egg', async () => {
+  const up = await import('../src/state/nurseryUpgrades')
+  const { progressNursery } = await import('../src/state/nursery')
+  const { transferProblem } = await import('../src/state/rules')
+  // Every level costs more and unlocks later than the one before.
+  for (const u of up.NURSERY_UPGRADES) {
+    for (let i = 1; i < u.tiers.length; i++) {
+      assert.ok(u.tiers[i].cost > u.tiers[i - 1].cost && u.tiers[i].unlockLevel > u.tiers[i - 1].unlockLevel)
+    }
+  }
+  assert.deepEqual(createInitialState().nurseryUpgrades, {})
+  assert.deepEqual(up.sanitizeNurseryUpgrades({ space: 9, warmth: -1, clutch: 1.7, bogus: 2 }), { space: 3, clutch: 1 })
+  assert.deepEqual(up.sanitizeNurseryUpgrades('nope'), {})
+
+  // Locked until its level, then bought one level at a time until it's maxed.
+  store.setState({ xp: 0, currency: 100000, nurseryUpgrades: {} })
+  assert.match(up.nurseryUpgradeProblem(store.getState(), 'space')!, /level 6/)
+  assert.equal(store.getState().buyNurseryUpgrade('space'), false)
+  store.setState({ xp: 999999 })
+  const coins = store.getState().currency
+  for (let i = 0; i < 3; i++) assert.ok(store.getState().buyNurseryUpgrade('space'))
+  assert.equal(store.getState().nurseryUpgrades.space, 3)
+  assert.equal(store.getState().currency, coins - 1500 - 4500 - 12000)
+  assert.equal(store.getState().buyNurseryUpgrade('space'), false)
+  assert.match(up.nurseryUpgradeProblem(store.getState(), 'space')!, /fully upgraded/)
+  assert.equal(up.nurseryCapacity(store.getState().nurseryUpgrades), NURSERY_CAPACITY + 12)
+
+  // More room: the nursery takes fish past the old limit.
+  const little = (id: string, habitat: 'main' | 'nursery') => ({ id, defId: 'goldfish', name: id, bornAt: 0, habitat, sizeScale: 1 })
+  const babies = Array.from({ length: NURSERY_CAPACITY }, (_, i) => little(`n${i}`, 'nursery'))
+  const visitor = little('m1', 'main')
+  store.setState({ ownedFish: [...babies, visitor], nurseryEggs: [], nurserySession: null, placedDecorations: [],
+    fishVitals: Object.fromEntries([...babies, visitor].map((f) => [f.id, { hunger: 0.8, growth: 0.2, mealsEaten: 0 }])) })
+  assert.equal(transferProblem(store.getState(), 'm1', 'nursery'), null)
+  store.setState({ nurseryUpgrades: {} })
+  assert.match(transferProblem(store.getState(), 'm1', 'nursery')!, /full \(12\/12\)/)
+
+  // Egg warmer: nursery time runs faster than real time.
+  const egg = { ...createNurseryEgg(babies[0], babies[1]), hatchSeconds: 100, remainingSeconds: 100 }
+  const base = { ...store.getState(), nurseryEggs: [egg] }
+  assert.equal(progressNursery({ ...base, nurseryUpgrades: {} }, 10).nurseryEggs[0].remainingSeconds, 90)
+  assert.equal(progressNursery({ ...base, nurseryUpgrades: { warmth: 2 } }, 10).nurseryEggs[0].remainingSeconds, 85)
+
+  // Baby food: nursery fish grow more from each meal; aquarium fish don't get it.
+  store.setState({ nurseryUpgrades: { nutrition: 3 } })
+  store.getState().fishAte('n0', 'pellets')
+  store.getState().fishAte('m1', 'pellets')
+  assert.ok(Math.abs(store.getState().fishVitals.n0.growth - (0.2 + 0.1 * 1.9)) < 1e-9)
+  assert.ok(Math.abs(store.getState().fishVitals.m1.growth - 0.3) < 1e-9)
+
+  // Nesting moss: a lucky roll adds one egg to the clutch.
+  const random = Math.random
+  try {
+    Math.random = () => 0
+    const [min] = getEggCountRange('goldfish')
+    const pair = [little('p1', 'nursery'), little('p2', 'nursery')]
+    const grown = { ownedFish: pair, nurseryEggs: [], nurserySession: null, fishVitals: { p1: { hunger: 0.2, growth: 1, mealsEaten: 0 }, p2: { hunger: 0.2, growth: 1, mealsEaten: 0 } } }
+    store.setState({ ...grown, nurseryUpgrades: {} })
+    assert.ok(store.getState().startFriendship('p1', 'p2'))
+    assert.equal(store.getState().nurserySession!.eggCount, min)
+    store.setState({ ...grown, nurseryUpgrades: { clutch: 1 } })
+    assert.ok(store.getState().startFriendship('p1', 'p2'))
+    assert.equal(store.getState().nurserySession!.eggCount, min + 1)
+  } finally {
+    Math.random = random
+  }
+})
+
+test('lucky charms: gentle nudges to one clutch, carried a few at a time and used up when pairing', async () => {
+  const { CHARMS, MAX_CHARMS, luckOf, sanitizeCharms, charmProblem } = await import('../src/state/charms')
+  const { PATTERNS, rollPattern, SURPRISE_CHANCE } = await import('../src/state/patterns')
+  // Gentle: a clover makes rare colours only a little more likely.
+  assert.equal(rollMorph([], () => 0.15), undefined)
+  assert.ok(rollMorph([], () => 0.15, luckOf('clover')))
+  assert.equal(rollMorph([], () => 0.2, luckOf('clover')), undefined)
+  // A moon pearl tilts which rare colour it is toward Midnight and Aurora.
+  const rarest = (luck = {}) => {
+    let count = 0
+    for (let i = 0; i < 1000; i++) {
+      let calls = 0
+      const morph = rollMorph([], () => (calls++ === 0 ? 0 : i / 1000), luck)
+      if (morph === 'midnight' || morph === 'aurora') count++
+    }
+    return count
+  }
+  assert.ok(rarest(luckOf('moon')) > rarest() + 100)
+  // A pattern shell: more surprises from matching parents, and a few from parents that differ.
+  const [a, b] = [PATTERNS[0].id, PATTERNS[1].id]
+  assert.equal(rollPattern(a, b, () => 0), a)
+  assert.notEqual(rollPattern(a, b, () => 0, luckOf('shell')), a)
+  assert.notEqual(rollPattern(a, b, () => 0, luckOf('shell')), b)
+  assert.equal(rollPattern(a, a, () => SURPRISE_CHANCE + 0.05, {}), a)
+  assert.notEqual(rollPattern(a, a, () => SURPRISE_CHANCE + 0.05, luckOf('shell')), a)
+  assert.deepEqual(sanitizeCharms({ clover: 99, shell: -2, moon: 2.5, junk: 3 }), { clover: MAX_CHARMS, moon: 2 })
+
+  // Bought one at a time, locked until their level, with a carry limit.
+  store.setState({ xp: 0, currency: 100000, charms: {} })
+  assert.match(charmProblem(store.getState(), 'clover')!, /level 8/)
+  assert.equal(store.getState().buyCharm('clover'), false)
+  store.setState({ xp: 999999 })
+  for (let i = 0; i < MAX_CHARMS; i++) assert.ok(store.getState().buyCharm('clover'))
+  assert.equal(store.getState().buyCharm('clover'), false)
+  assert.match(charmProblem(store.getState(), 'clover')!, /carry/)
+  assert.equal(store.getState().currency, 100000 - MAX_CHARMS * CHARMS[0].cost)
+
+  // Pairing with a charm uses it up and remembers it for the clutch; one you don't have is ignored.
+  const pair = ['p1', 'p2'].map((id) => ({ id, defId: 'goldfish', name: id, bornAt: 0, habitat: 'nursery' as const, sizeScale: 1 }))
+  const grown = { ownedFish: pair, nurseryEggs: [], nurserySession: null,
+    fishVitals: { p1: { hunger: 0.2, growth: 1, mealsEaten: 0 }, p2: { hunger: 0.2, growth: 1, mealsEaten: 0 } } }
+  store.setState(grown)
+  assert.ok(store.getState().startFriendship('p1', 'p2', 'clover'))
+  assert.equal(store.getState().nurserySession!.charm, 'clover')
+  assert.equal(store.getState().charms.clover, MAX_CHARMS - 1)
+  store.setState(grown)
+  assert.ok(store.getState().startFriendship('p1', 'p2', 'moon'))
+  assert.equal(store.getState().nurserySession!.charm, undefined)
+  // The charm survives a reload with the friendship.
+  const saved = JSON.parse(storage.get('aquarium-save')!).state
+  assert.equal(migrate({ ...saved, nurserySession: { ...saved.nurserySession, charm: 'clover' } }, 6).nurserySession!.charm, 'clover')
+  assert.equal(migrate({ ...saved, nurserySession: { ...saved.nurserySession, charm: 'horseshoe' } }, 6).nurserySession!.charm, undefined)
 })

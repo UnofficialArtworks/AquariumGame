@@ -1,4 +1,5 @@
 import type { DecorationInstance, FishInstance, FishVitals, GameState } from './types'
+import { DEFAULT_TANK_SIZE, getTankSize } from './tankSizes'
 import { getDecorationDef, STARTER_DECORATION_IDS } from '../scene/decorations/decorationDefinitions'
 import { getFishDef, resolveFishId, sampleFishSize, STARTER_FISH_IDS } from '../scene/fish/fishDefinitions'
 import { DEFAULT_BACKGROUND_ID, getBackgroundDef } from '../scene/backgrounds'
@@ -7,7 +8,8 @@ import { STARTER_TREATS } from '../scene/food/foodDefinitions'
 import { DEFAULT_STAND_ID, STAND_CATALOG } from '../scene/stands/standDefinitions'
 import { DEFAULT_GLASS_TOOL, DEFAULT_GRAVEL_TOOL, getToolDef, STARTER_TOOL_IDS } from '../scene/cleaning/toolDefinitions'
 import { pickFishName } from './names'
-import { NURSERY_CAPACITY } from './economy'
+import { nurseryCapacity, sanitizeNurseryUpgrades } from './nurseryUpgrades'
+import { getCharm, sanitizeCharms } from './charms'
 import { recordFish, sanitizeFishpedia, type Fishpedia } from './fishpedia'
 import { getMorph } from './morphs'
 import { levelFromXp } from './progression'
@@ -70,6 +72,8 @@ export function createInitialState(): GameState {
     fishVitals: Object.fromEntries(ownedFish.map((f) => [f.id, freshVitals(0.55)])),
     nurserySession: null,
     nurseryEggs: [],
+    nurseryUpgrades: {},
+    charms: {},
     unlockedDecorationDefIds: [...STARTER_DECORATION_IDS],
     placedDecorations,
     backgroundId: DEFAULT_BACKGROUND_ID,
@@ -78,6 +82,7 @@ export function createInitialState(): GameState {
     unlockedSubstrateIds: [DEFAULT_SUBSTRATE_ID],
     standId: DEFAULT_STAND_ID,
     unlockedStandIds: [DEFAULT_STAND_ID],
+    tankSizeId: DEFAULT_TANK_SIZE,
     ownedToolIds: [...STARTER_TOOL_IDS],
     equippedGlassTool: DEFAULT_GLASS_TOOL,
     equippedGravelTool: DEFAULT_GRAVEL_TOOL,
@@ -199,12 +204,16 @@ export function sanitize(state: Partial<GameState>): GameState {
   merged.unlockedStandIds = [...new Set([DEFAULT_STAND_ID, ...(Array.isArray(state.unlockedStandIds) ? state.unlockedStandIds : [])])]
     .filter((id) => standIds.has(id))
   if (!merged.unlockedStandIds.includes(merged.standId)) merged.standId = DEFAULT_STAND_ID
+  merged.tankSizeId = getTankSize(state.tankSizeId).id
   merged.ownedToolIds = [...new Set([...STARTER_TOOL_IDS, ...(Array.isArray(state.ownedToolIds) ? state.ownedToolIds : [])])]
     .filter((id) => getToolDef(id))
   const owns = (id: unknown, category: 'glass' | 'gravel') =>
     typeof id === 'string' && merged.ownedToolIds.includes(id) && getToolDef(id)?.category === category
   if (!owns(merged.equippedGlassTool, 'glass')) merged.equippedGlassTool = DEFAULT_GLASS_TOOL
   if (!owns(merged.equippedGravelTool, 'gravel')) merged.equippedGravelTool = DEFAULT_GRAVEL_TOOL
+  merged.nurseryUpgrades = sanitizeNurseryUpgrades(state.nurseryUpgrades)
+  merged.charms = sanitizeCharms(state.charms)
+  const capacity = nurseryCapacity(merged.nurseryUpgrades)
   const occupiedNursery = merged.ownedFish.filter((f) => f.habitat === 'nursery').length
   const eggIds = new Set<string>()
   merged.nurseryEggs = (Array.isArray(state.nurseryEggs) ? state.nurseryEggs : [])
@@ -215,17 +224,18 @@ export function sanitize(state: Partial<GameState>): GameState {
       eggIds.add(egg.id)
       return true
     })
-    .slice(0, Math.max(0, NURSERY_CAPACITY - occupiedNursery))
+    .slice(0, Math.max(0, capacity - occupiedNursery))
     .map((egg) => sanitizeInheritance({ ...egg, defId: resolveFishId(egg.defId), remainingSeconds: Math.max(0, Math.min(egg.hatchSeconds, egg.remainingSeconds)) }))
   const session = state.nurserySession
   const parents = session?.parentIds
-  const eggCount = Number.isInteger(session?.eggCount) && session!.eggCount >= 1 && session!.eggCount <= 6
+  const eggCount = Number.isInteger(session?.eggCount) && session!.eggCount >= 1 && session!.eggCount <= 8
     ? session!.eggCount : 1
   merged.nurserySession = session && parents?.length === 2 && parents[0] !== parents[1]
     && parents.every((id) => merged.ownedFish.some((f) => f.id === id && f.habitat === 'nursery' && merged.fishVitals[id]?.growth >= 1))
     && Number.isFinite(session.remainingSeconds)
-    && occupiedNursery + merged.nurseryEggs.length + eggCount <= NURSERY_CAPACITY
-    ? { parentIds: [parents[0], parents[1]], remainingSeconds: Math.max(0, session.remainingSeconds), eggCount }
+    && occupiedNursery + merged.nurseryEggs.length + eggCount <= capacity
+    ? { parentIds: [parents[0], parents[1]], remainingSeconds: Math.max(0, session.remainingSeconds), eggCount,
+      ...(getCharm(session.charm) ? { charm: session.charm } : {}) }
     : null
   return merged
 }

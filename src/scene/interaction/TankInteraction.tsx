@@ -9,6 +9,7 @@ import { getFoodDef } from '../food/foodDefinitions'
 import { sfx } from '../../audio/sfx'
 import { emitSparks } from '../../sim/sparks'
 import { addRipple } from '../../sim/ripples'
+import { touches } from './touches'
 import { clampToInterior, TANK_BOTTOM_Y, TANK_DEPTH, TANK_HEIGHT, TANK_WIDTH, waterLevel } from '../TankBounds'
 
 const catcherMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false })
@@ -45,7 +46,8 @@ export function TankInteraction() {
   }
 
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
-    if (hitsSomethingInteractive(e)) return
+    // A second finger turns the camera; it doesn't drop more food.
+    if (hitsSomethingInteractive(e) || touches.count > 1) return
     if (mode === 'feed') {
       e.stopPropagation()
       const p = dropPoint(e.ray)

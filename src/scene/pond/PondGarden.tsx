@@ -3,9 +3,9 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { MeshBuilder, type BuiltPart, type V3 } from '../geometry/MeshBuilder'
 import { taperedTube } from '../geometry/shapes'
-import { makeAqua, aquaUniforms } from '../materials/aquaShader'
+import { makeAqua, aquaUniforms, resetWaterBox } from '../materials/aquaShader'
 import { atmosphere } from '../Atmosphere'
-import { FLOOR_Y, HALF_DEPTH, HALF_WIDTH, waterLevel, WATER_LINE_Y } from '../TankBounds'
+import { FLOOR_Y, HALF_DEPTH, HALF_WIDTH, onTankResize, waterLevel, WATER_LINE_Y } from '../TankBounds'
 import { mulberry32 } from '../../utils/rng'
 import { noise2, noise3 } from '../../utils/noise'
 
@@ -20,8 +20,14 @@ import { noise2, noise3 } from '../../utils/noise'
 
 /** The lawn sits a little above the water line, so the pond has a lip. */
 export const GROUND_Y = WATER_LINE_Y + 0.16
-const RX = HALF_WIDTH + 0.4
-const RZ = HALF_DEPTH + 0.42
+let RX = HALF_WIDTH + 0.4
+let RZ = HALF_DEPTH + 0.42
+onTankResize(() => {
+  RX = HALF_WIDTH + 0.4
+  RZ = HALF_DEPTH + 0.42
+  POND_OUTLINE_RADII[0] = RX
+  POND_OUTLINE_RADII[2] = RZ
+})
 
 /** The pond's edge: a rounded, slightly wobbly shape that encloses the whole swimming space. */
 function outline(scale = 1, n = 120): Array<[number, number]> {
@@ -535,14 +541,9 @@ export function PondGarden() {
 
   // The water box reaches out to the pond's rounded edges, so the banks get the water tint too.
   useEffect(() => {
-    const min = aquaUniforms.uWaterBoxMin.value.clone()
-    const max = aquaUniforms.uWaterBoxMax.value.clone()
-    aquaUniforms.uWaterBoxMin.value.set(-RX * 1.08, min.y, -RZ * 1.1)
-    aquaUniforms.uWaterBoxMax.value.set(RX * 1.08, max.y, RZ * 1.1)
-    return () => {
-      aquaUniforms.uWaterBoxMin.value.set(min.x, aquaUniforms.uWaterBoxMin.value.y, min.z)
-      aquaUniforms.uWaterBoxMax.value.set(max.x, aquaUniforms.uWaterBoxMax.value.y, max.z)
-    }
+    aquaUniforms.uWaterBoxMin.value.set(-RX * 1.08, aquaUniforms.uWaterBoxMin.value.y, -RZ * 1.1)
+    aquaUniforms.uWaterBoxMax.value.set(RX * 1.08, aquaUniforms.uWaterBoxMax.value.y, RZ * 1.1)
+    return resetWaterBox
   }, [])
 
   useFrame(() => {

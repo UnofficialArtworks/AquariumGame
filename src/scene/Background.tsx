@@ -4,7 +4,6 @@ import { AQUA_GLSL_COMMON, aquaUniforms } from './materials/aquaShader'
 import { getBackgroundDef } from './backgrounds'
 import { GLASS_THICKNESS, HALF_DEPTH, TANK_BOTTOM_Y, TANK_HEIGHT, TANK_WIDTH } from './TankBounds'
 
-const PLANE_W = TANK_WIDTH + 0.1
 const PLANE_H = TANK_HEIGHT - TANK_BOTTOM_Y + 0.1
 
 const vertexShader = /* glsl */ `
@@ -214,6 +213,8 @@ const fragmentShader = /* glsl */ `
 /** Printed-style scenic backdrop stuck to the outside of the back glass. */
 export function Background({ backgroundId }: { backgroundId: string }) {
   const def = getBackgroundDef(backgroundId)
+  // Read at mount: the scene remounts when the tank grows.
+  const planeW = TANK_WIDTH + 0.1
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -222,10 +223,10 @@ export function Background({ backgroundId }: { backgroundId: string }) {
         uniforms: {
           ...aquaUniforms,
           uStyle: { value: def.style },
-          uAspect: { value: PLANE_W / PLANE_H },
+          uAspect: { value: planeW / PLANE_H },
         },
       }),
-    [def.style],
+    [def.style, planeW],
   )
 
   useEffect(() => () => material.dispose(), [material])
@@ -235,7 +236,7 @@ export function Background({ backgroundId }: { backgroundId: string }) {
       position={[0, TANK_BOTTOM_Y + PLANE_H / 2 - 0.05, -HALF_DEPTH - GLASS_THICKNESS / 2 - 0.02]}
       material={material}
     >
-      <planeGeometry args={[PLANE_W, PLANE_H]} />
+      <planeGeometry args={[planeW, PLANE_H]} />
     </mesh>
   )
 }

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { FLOOR_Y, HALF_DEPTH, HALF_WIDTH, WATER_LINE_Y } from '../TankBounds'
+import { FLOOR_Y, HALF_DEPTH, HALF_WIDTH, onTankResize, WATER_LINE_Y } from '../TankBounds'
 
 /**
  * Uniforms shared (by reference) with every "aqua" material in the scene.
@@ -16,6 +16,14 @@ export const aquaUniforms = {
   /** Multiplier for emissive "glow" parts — boosted at night. */
   uGlowBoost: { value: 1 },
 }
+
+/** Fit the water box back to the glass (after a resize, or when the Koi Pond's wider box is put away). */
+export function resetWaterBox() {
+  aquaUniforms.uWaterBoxMin.value.set(-HALF_WIDTH, aquaUniforms.uWaterBoxMin.value.y, -HALF_DEPTH)
+  aquaUniforms.uWaterBoxMax.value.set(HALF_WIDTH, aquaUniforms.uWaterBoxMax.value.y, HALF_DEPTH)
+}
+
+onTankResize(resetWaterBox)
 
 /** GLSL helpers shared by patched materials and hand-written tank shaders. */
 export const AQUA_GLSL_COMMON = /* glsl */ `

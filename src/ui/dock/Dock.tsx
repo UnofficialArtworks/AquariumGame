@@ -1,6 +1,7 @@
 import { useEffect, useRef, type CSSProperties } from 'react'
 import { useGameStore } from '../../state/useGameStore'
 import { useUIStore, type DockTab } from '../../state/useUIStore'
+import { CameraPad } from '../CameraPad'
 import { ESCAPE_LAYER, useEscape } from '../escape'
 import { algaeCoverage } from '../../sim/algae'
 import { levelFromXp } from '../../state/progression'
@@ -87,6 +88,7 @@ export function Dock() {
 
   return (
     <div ref={dockRef} className={`dock ${open ? 'is-open' : ''}`} data-tab={dock} style={{ '--tab-index': index, '--tab-count': TABS.length } as CSSProperties}>
+      <CameraPad />
       <div className="drawer-shell" aria-hidden={!open} inert={!open}>
         <section className="drawer" aria-label={`${active.label} panel`}>
           <button className="drawer-hide" onClick={() => setTrayOpen(false)} aria-label="Hide panel">
