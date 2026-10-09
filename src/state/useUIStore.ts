@@ -3,7 +3,7 @@ import type { Habitat } from './types'
 import type { ShopCategory } from './rules'
 import { nightLevel, type NightOverride } from '../sim/daylight'
 
-export type ModalId = 'shop' | 'help' | 'fishpedia' | 'goals' | 'share' | 'fishing' | null
+export type ModalId = 'shop' | 'help' | 'fishpedia' | 'goals' | 'share' | 'fishing' | 'moving' | null
 /** Shop drawer tabs: one per shop category. */
 export type ShopTab = ShopCategory
 export type AppMode = 'view' | 'feed' | 'clean' | 'decorate'

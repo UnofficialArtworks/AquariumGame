@@ -15,6 +15,7 @@ import { savePhoto } from './photo'
 import { Button } from './components/Button'
 import { getVisitor, visitorName } from '../state/visitors'
 import { ShareTank } from './ShareTank'
+import { MovingDay } from './MovingDay'
 import { Fishing } from './Fishing'
 import { hasFavorite, hasPersonality, personalityOf, SCHOOL_SIZE, schoolSize, TRAITS } from '../state/personality'
 import { hasPatterns, patternName } from '../state/patterns'
@@ -222,6 +223,15 @@ function SoundMenu() {
             <span>🔔 Sound effects</span>
             <input type="checkbox" role="switch" checked={sound} onChange={() => setSetting('sound', !sound)} />
           </label>
+          <button
+            className="switch-row moving-row"
+            onClick={() => {
+              setOpen(false)
+              useUIStore.getState().openModal('moving')
+            }}
+          >
+            <span>📦 Moving day</span>
+          </button>
         </div>
       )}
     </div>
@@ -697,6 +707,7 @@ export function HUD() {
       <Fishpedia />
       <Goals />
       <ShareTank />
+      <MovingDay />
       <Fishing />
     </div>
   )

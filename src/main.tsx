@@ -1,3 +1,5 @@
+// First: a moving code brought in on the last page load becomes the save before anything reads it.
+import './app/arrival'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/global.css'

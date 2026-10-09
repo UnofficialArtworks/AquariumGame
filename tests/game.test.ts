@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
 import './cleaning.test'
+import './moving.test'
 import { createInitialState, freshVitals, migrate } from '../src/state/migrations'
 import { FISH_CATALOG, getFishDef, MAX_OWNED_FISH } from '../src/scene/fish/fishDefinitions'
 import { STAND_CATALOG } from '../src/scene/stands/standDefinitions'

@@ -3207,6 +3207,39 @@ button:disabled {
   color: #ffb4a8;
 }
 
+/* Moving day: the same look as sharing, with a roomier box for the long moving code. */
+.moving-code {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ink);
+  font: 700 0.8rem var(--font);
+  word-break: break-all;
+}
+
+.moving-code:focus {
+  outline: 2px solid rgba(110, 210, 255, 0.6);
+  outline-offset: 1px;
+}
+
+.moving-confirm {
+  display: grid;
+  gap: 8px;
+}
+
+.moving-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
 .visit-bar {
   grid-template-columns: 1fr auto;
 }
