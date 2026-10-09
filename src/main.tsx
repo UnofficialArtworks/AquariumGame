@@ -2,6 +2,11 @@
 import './app/arrival'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+// Nunito ships with the game, so playing asks nothing of any other server.
+import '@fontsource/nunito/600.css'
+import '@fontsource/nunito/700.css'
+import '@fontsource/nunito/800.css'
+import '@fontsource/nunito/900.css'
 import './styles/global.css'
 import App from './App.tsx'
 import { useGameStore } from './state/useGameStore'

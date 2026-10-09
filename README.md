@@ -36,7 +36,7 @@ Your aquarium keeps swimming while you're away, and your progress saves automati
 
 ## Your progress and privacy
 
-Your aquarium is saved only in your own browser on your own device. There are no accounts, no ads and no purchases, and your game data never leaves your device. A share link is the one exception, and only if you send it yourself: the link holds just your tank's name and how it looks (no fish names), and nothing is uploaded anywhere. (The page does load its font from Google Fonts.) Clearing your browser's site data will reset your aquarium, and saves don't move between devices or browsers.
+Your aquarium is saved only in your own browser on your own device. There are no accounts, no ads and no purchases, and your game data never leaves your device. A share link is the one exception, and only if you send it yourself: the link holds just your tank's name and how it looks (no fish names), and nothing is uploaded anywhere. Clearing your browser's site data will reset your aquarium, and saves don't move between devices or browsers.
 
 ## For developers
 
