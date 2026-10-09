@@ -4,7 +4,12 @@
 export const PASSIVE_COINS_PER_SECOND = 0.005
 /** Passive coins per second while away (plus whatever the fish earn). */
 export const OFFLINE_PASSIVE_PER_SECOND = 0.001
-export const MAX_OFFLINE_EARNING_SECONDS = 3 * 60 * 60
+/** Fish keep making coins for up to this long while the player is away. */
+export const MAX_OFFLINE_EARNING_SECONDS = 8 * 60 * 60
+/** The most away time fish spend earning at full pace (fed, or kept fed by the auto-feeder). */
+export const MAX_OFFLINE_FULL_PACE_SECONDS = 3 * 60 * 60
+/** Hungry fish still make coins while the player is away, at this fraction of their usual pace. */
+export const AWAY_COIN_PACE = 0.25
 export const MAX_OFFLINE_SIM_SECONDS = 12 * 60 * 60
 
 /** Full -> starving in ~18 minutes for a fish with appetite 1. */

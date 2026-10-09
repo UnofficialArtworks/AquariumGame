@@ -16,6 +16,11 @@ import { updateVisitors } from '../sim/visitors'
 import { runHelpers } from '../sim/helpers'
 import { applyTankSize } from '../state/tankSizes'
 
+/** A gap between ticks longer than this means the page was paused, not just busy. */
+const CATCH_UP_SECONDS = 5
+/** Same limit as the algae catch-up when the game is reopened. */
+const MAX_ALGAE_CATCH_UP_SECONDS = 8 * 60 * 60
+
 export function GameRoot() {
   const sound = useGameStore((s) => s.settings.sound)
   const music = useGameStore((s) => s.settings.music)
@@ -36,7 +41,17 @@ export function GameRoot() {
       ui.syncClock()
       // A friend's tank just sits there looking lovely: no hunger, goals or visitors.
       if (ui.visiting) return
-      s.tick()
+      // A hidden page counts as time away, caught up in one go when the player comes back.
+      if (document.hidden) return
+      const away = (Date.now() - s.lastTickTimestamp) / 1000
+      if (away > CATCH_UP_SECONDS) {
+        // The browser paused the page (a phone in the background, a sleeping laptop):
+        // catch up the same way as reopening the game.
+        s.applyOfflineProgress()
+        growAlgae(Math.min(MAX_ALGAE_CATCH_UP_SECONDS, away), s.murk, bonusesFor(s.placedDecorations).algaeRate)
+      } else {
+        s.tick()
+      }
       s.refreshGoals()
       updateVisitors()
       runHelpers()

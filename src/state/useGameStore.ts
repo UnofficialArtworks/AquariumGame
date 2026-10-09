@@ -11,7 +11,9 @@ import {
   GROWTH_PER_MEAL,
   HUNGER_COIN_CUTOFF,
   HUNGER_PER_SECOND,
+  AWAY_COIN_PACE,
   MAX_OFFLINE_EARNING_SECONDS,
+  MAX_OFFLINE_FULL_PACE_SECONDS,
   MAX_OFFLINE_SIM_SECONDS,
   MAX_WASTE_ITEMS,
   MURK_BASE_PER_SECOND,
@@ -255,8 +257,11 @@ export const useGameStore = create<GameStore>()(
             const rate = HUNGER_PER_SECOND * def.appetite
             // The auto-feeder only reaches fish living in the main tank.
             const fed = bonuses.autoFeeder && f.habitat === 'main' && rate > 0
-            // Fish keep earning while away until they get too hungry — feed before you leave!
-            const productive = rate > 0 && !fed ? Math.max(0, Math.min(earnSeconds, (HUNGER_COIN_CUTOFF - v.hunger) / rate)) : earnSeconds
+            // Fed fish earn at full pace until they get too hungry (or for a few hours with
+            // the auto-feeder), then at a gentler pace — feed before you leave!
+            const fullPaceCap = Math.min(earnSeconds, MAX_OFFLINE_FULL_PACE_SECONDS)
+            const fullPace = rate > 0 && !fed ? Math.max(0, Math.min(fullPaceCap, (HUNGER_COIN_CUTOFF - v.hunger) / rate)) : fullPaceCap
+            const productive = fullPace + (earnSeconds - fullPace) * AWAY_COIN_PACE
             if (def.coinValue > 0) coins += (coinValueFor(def.coinValue, v.growth) * productive) / averageInterval
             vitals[f.id] = rate > 0
               ? addHunger(v, rate * elapsed)
@@ -266,7 +271,10 @@ export const useGameStore = create<GameStore>()(
           }
           const mainFishCount = s.ownedFish.filter((f) => f.habitat === 'main').length
           const murk = Math.min(1, s.murk + Math.min(0.45, elapsed * (MURK_BASE_PER_SECOND + MURK_PER_FISH_PER_SECOND * mainFishCount) * bonuses.murkRate))
-          const earned = Math.floor(coins)
+          // Keep the fraction so short catch-ups (a phone waking a paused page) still add up.
+          const total = coins + passiveRemainder
+          const earned = Math.floor(total)
+          passiveRemainder = total - earned
           const { eggCreated, hatched, ...nursery } = progressNursery({ ...s, fishVitals: vitals }, elapsed)
           set({ currency: s.currency + earned, lastTickTimestamp: now, murk, ...nursery })
           if (hatched.length) {
@@ -289,7 +297,7 @@ export const useGameStore = create<GameStore>()(
           if (elapsed > 180) {
             useUIStore.getState().setWelcomeBack({
               visitors: awayVisitors,
-              minutesAway: Math.round(elapsed / 60),
+              minutesAway: Math.round(Math.max(0, now - s.lastTickTimestamp) / 60_000),
               coins: earned,
               hungryFish,
               algaePercent: 0,

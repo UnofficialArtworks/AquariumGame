@@ -478,6 +478,31 @@ test('level-up rewards and offline earnings are applied once', () => {
   assert.equal(store.getState().currency, after)
 })
 
+test('fish keep earning at a gentler pace while away, and fed fish earn a little more', () => {
+  const id = 'away-earner'
+  const awayFor = (hours: number, hunger: number) => {
+    store.setState({
+      ownedFish: [{ id, defId: 'goldfish', name: 'Sunny', bornAt: Date.now(), habitat: 'main' }],
+      fishVitals: { [id]: { hunger, growth: 1, mealsEaten: 0 } },
+      placedDecorations: [],
+      lastTickTimestamp: Date.now() - hours * 3600_000,
+    })
+    const before = store.getState().currency
+    store.getState().applyOfflineProgress()
+    return store.getState().currency - before
+  }
+  // A grown goldfish's coin is worth 3, once every 750 s on average. A starving one earns
+  // at a quarter pace for 8 hours (~28.8) on top of the trickle (~28.8).
+  const hungry = awayFor(12, 1)
+  assert.ok(hungry >= 56 && hungry <= 59, `hungry fish earned ${hungry}`)
+  // Earnings stop growing after 8 hours away.
+  assert.ok(Math.abs(awayFor(8, 1) - hungry) <= 1)
+  assert.ok(awayFor(12, 0) > hungry)
+  assert.equal(ui.getState().welcomeBack?.minutesAway, 720)
+  awayFor(20, 1)
+  assert.equal(ui.getState().welcomeBack?.minutesAway, 1200)
+})
+
 test('algae grows, scrubs, and survives a save/load roundtrip', () => {
   storage.delete('aquarium-algae')
   loadAlgae(0.2)

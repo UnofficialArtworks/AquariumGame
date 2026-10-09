@@ -574,6 +574,15 @@ function listVisitors(ids: string[]): string {
   return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
+/** "45 minutes", "1 hour", "3 hours and 20 minutes". */
+function awayTime(minutes: number): string {
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  if (!hours) return plural(minutes, 'minute')
+  return rest ? `${plural(hours, 'hour')} and ${plural(rest, 'minute')}` : plural(hours, 'hour')
+}
+
 function RewardModals() {
   const levelUp = useUIStore((s) => s.levelUp)
   const setLevelUp = useUIStore((s) => s.setLevelUp)
@@ -617,7 +626,7 @@ function RewardModals() {
         <Modal title="Welcome back!" onClose={() => setWelcomeBack(null)}>
           <div className="reward">
             <div className="reward-icon">🐠</div>
-            <p>Your aquarium kept swimming while you were away for {welcomeBack.minutesAway} minutes.</p>
+            <p>Your aquarium kept swimming while you were away for {awayTime(welcomeBack.minutesAway)}.</p>
             <p>
               <strong><Coin /> +{welcomeBack.coins}</strong> coins earned
             </p>
